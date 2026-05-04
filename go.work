@@ -1,0 +1,13 @@
+go 1.25.3
+
+// Goose framework (local development)
+use ../../awesome-goose/goose
+
+// Package modules — uncomment as each go.mod is created
+use ./libs/core
+
+use ./libs/polylog
+
+use ./libs/blobs
+
+use ./libs/flags

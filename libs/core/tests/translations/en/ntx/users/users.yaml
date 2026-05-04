@@ -1,0 +1,4 @@
+created: "User created successfully"
+greeting: "Hello, {{name}}!"
+sanitized: "{{#xSanitizer}}{{value}}{{/xSanitizer}}"
+amount: "Amount: {{#xMajor}}{{cents}}{{/xMajor}}"
