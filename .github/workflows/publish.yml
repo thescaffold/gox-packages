@@ -1,0 +1,60 @@
+name: Publish
+
+on:
+  push:
+    tags:
+      - "*/v*"           # e.g. core/v1.0.0  or  blobs/v0.3.1
+
+jobs:
+  publish:
+    name: Tag and publish package
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      # Extract package name and version from the tag (e.g. "core/v1.0.0")
+      - name: Parse tag
+        id: parse
+        run: |
+          TAG="${{ github.ref_name }}"
+          PKG="${TAG%%/*}"
+          VERSION="${TAG##*/}"
+          echo "pkg=$PKG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "module=github.com/thescaffold/gox-packages-$PKG" >> "$GITHUB_OUTPUT"
+
+      - name: Verify build
+        working-directory: libs/${{ steps.parse.outputs.pkg }}
+        run: go build ./...
+
+      - name: Run tests
+        working-directory: libs/${{ steps.parse.outputs.pkg }}
+        run: go test ./... -timeout 60s
+
+      - name: Validate module proxy
+        run: |
+          MODULE="${{ steps.parse.outputs.module }}"
+          VERSION="${{ steps.parse.outputs.version }}"
+          echo "Published: $MODULE@$VERSION"
+          echo "Proxy URL: https://proxy.golang.org/$MODULE/@v/$VERSION.info"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "${{ steps.parse.outputs.pkg }} ${{ steps.parse.outputs.version }}"
+          body: |
+            Release of `${{ steps.parse.outputs.module }}` ${{ steps.parse.outputs.version }}.
+
+            Install:
+            ```
+            go get ${{ steps.parse.outputs.module }}@${{ steps.parse.outputs.version }}
+            ```
+          generate_release_notes: true

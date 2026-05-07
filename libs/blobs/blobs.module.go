@@ -19,9 +19,12 @@ type BlobsConfig struct {
 	// LocalBaseDir is used when Provider == ProviderLocal (default: "./storage").
 	LocalBaseDir string
 	// S3* fields are used when Provider == ProviderS3.
-	S3Bucket   string
-	S3Region   string
-	S3Endpoint string
+	// AccessKey and SecretKey are optional; if empty the default AWS credential chain is used.
+	S3Bucket    string
+	S3Region    string
+	S3Endpoint  string
+	S3AccessKey string
+	S3SecretKey string
 }
 
 // BlobsModule is a goose module that wires a StorageProvider and FilesService.
@@ -41,9 +44,11 @@ func (m *BlobsModule) Declarations() []any {
 	switch m.cfg.Provider {
 	case ProviderS3:
 		provider = &files.S3Provider{
-			Bucket:   m.cfg.S3Bucket,
-			Region:   m.cfg.S3Region,
-			Endpoint: m.cfg.S3Endpoint,
+			Bucket:    m.cfg.S3Bucket,
+			Region:    m.cfg.S3Region,
+			Endpoint:  m.cfg.S3Endpoint,
+			AccessKey: m.cfg.S3AccessKey,
+			SecretKey: m.cfg.S3SecretKey,
 		}
 	default:
 		provider = files.NewLocalProvider(m.cfg.LocalBaseDir)

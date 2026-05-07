@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Test (${{ matrix.pkg }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        pkg:
+          - blobs
+          - core
+          - flags
+          - polylog
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: libs/${{ matrix.pkg }}/go.mod
+          cache-dependency-path: libs/${{ matrix.pkg }}/go.sum
+
+      - name: Build
+        working-directory: libs/${{ matrix.pkg }}
+        run: go build ./...
+
+      - name: Test
+        working-directory: libs/${{ matrix.pkg }}
+        run: go test ./... -timeout 60s
