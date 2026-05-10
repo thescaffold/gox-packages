@@ -3,8 +3,8 @@ package tests
 import (
 	"testing"
 
-	"github.com/thescaffold/gox-packages-core/filter"
 	test "github.com/awesome-goose/goose/testing"
+	"github.com/thescaffold/gox-packages-core/filter"
 )
 
 func TestFilter(t *testing.T) {

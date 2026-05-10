@@ -3,8 +3,8 @@ package tests
 import (
 	"testing"
 
-	"github.com/thescaffold/gox-packages-core/security"
 	test "github.com/awesome-goose/goose/testing"
+	"github.com/thescaffold/gox-packages-core/security"
 )
 
 func TestSecurity(t *testing.T) {

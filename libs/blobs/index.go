@@ -1,9 +1,11 @@
-// Package blobs provides file storage abstraction for the NTX platform.
-// Use BlobsModule.Register(cfg) to wire LocalProvider or the S3Provider stub.
+// Package blobs is a Go HTTP client for the scaffold blobs server.
+// It mirrors jsx-packages/libs/blobs behavior: chunked upload via init→batch→verify
+// and download URL construction. Use BlobsModule.Register(cfg) to wire FilesService.
 package blobs
 
 import "github.com/thescaffold/gox-packages-blobs/files"
 
 // Re-exports for single-import convenience.
 type FilesService = files.FilesService
-type StorageProvider = files.StorageProvider
+type File = files.File
+type Page = files.Page

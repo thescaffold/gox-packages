@@ -1,47 +1,72 @@
 package events
 
-import (
-	"github.com/thescaffold/gox-packages-core/events"
-	"github.com/thescaffold/gox-packages-core/utils"
-)
-
-// EventsService wraps the core TrackerService to provide analytics event publishing
-// over the NTX EventBus. It mirrors the TS EventsService interface exactly.
+// EventsService publishes analytics events to the polylog queue, where the
+// Flusher batches them into POSTs to the scaffold server. Mirrors
+// jsx-packages/libs/polylog/src/events/index.ts exactly:
+//
+//   - Identify pushes Item{Category: Event, Type: "user.identify",
+//     Payload: {type:"identify", id, attributes, options}}
+//   - Track pushes Item{Category: Event, Type: <eventType>,
+//     Payload: {type:"track", id, attributes, options}}
+//   - Message pushes Item{Category: Event, Type: <messageType>,
+//     Payload: {...attributes}}  (spread, NOT wrapped)
 type EventsService struct {
-	tracker *events.TrackerService
+	queue *Queue
 }
 
-// New creates an EventsService backed by the given TrackerService.
-func New(tracker *events.TrackerService) *EventsService {
-	return &EventsService{tracker: tracker}
+// New creates an EventsService backed by the given queue.
+func New(queue *Queue) *EventsService {
+	return &EventsService{queue: queue}
 }
 
-// Identify publishes a user identity event.
-func (s *EventsService) Identify(id string, attrs any) {
-	s.tracker.Identify(id, toKV(attrs))
+// Identify enqueues a user-identification event.
+func (s *EventsService) Identify(id string, attributes any, options *IdentifyOptions) {
+	s.queue.Push(Item{
+		Category: CategoryEvent,
+		Type:     "user.identify",
+		Payload: map[string]any{
+			"type":       "identify",
+			"id":         id,
+			"attributes": coerceAttrs(attributes),
+			"options":    options,
+		},
+	})
 }
 
-// Track publishes a named user action event.
-func (s *EventsService) Track(id, name string, attrs any) {
-	s.tracker.Track(id, name, toKV(attrs))
+// Track enqueues a named user-action event.
+func (s *EventsService) Track(id, eventType string, attributes any, options *TrackOptions) {
+	s.queue.Push(Item{
+		Category: CategoryEvent,
+		Type:     eventType,
+		Payload: map[string]any{
+			"type":       "track",
+			"id":         id,
+			"attributes": coerceAttrs(attributes),
+			"options":    options,
+		},
+	})
 }
 
-// Message publishes a typed event with arbitrary attributes.
-func (s *EventsService) Message(eventType string, attrs any) {
-	s.tracker.Message(eventType, attrs)
+// Message enqueues a typed event with a spread attribute payload.
+// Note: unlike Identify/Track this does NOT wrap with type/id — it spreads
+// attributes directly into the payload, mirroring jsx-polylog message().
+func (s *EventsService) Message(messageType string, attributes any, options *MessageOptions) {
+	_ = options // jsx-polylog message() drops options; preserved here for parity
+	s.queue.Push(Item{
+		Category: CategoryEvent,
+		Type:     messageType,
+		Payload:  coerceAttrs(attributes),
+	})
 }
 
-// toKV coerces any value to utils.KeyValue (map[string]any).
-// nil and non-map types yield an empty map so callers never pass nil traits.
-func toKV(v any) utils.KeyValue {
+// coerceAttrs returns a usable map for the payload. nil and unrecognized types
+// yield an empty map so a caller never enqueues nil traits.
+func coerceAttrs(v any) map[string]any {
 	if v == nil {
-		return utils.KeyValue{}
-	}
-	if kv, ok := v.(utils.KeyValue); ok {
-		return kv
+		return map[string]any{}
 	}
 	if m, ok := v.(map[string]any); ok {
-		return utils.KeyValue(m)
+		return m
 	}
-	return utils.KeyValue{}
+	return map[string]any{}
 }

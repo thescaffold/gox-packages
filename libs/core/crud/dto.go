@@ -14,8 +14,8 @@ type ListDto struct {
 
 // GetDto is the input for Get and FindRelatives handlers.
 type GetDto struct {
-	ID       string           `param:"id"`
-	Relative string           `param:"relative"`
+	ID       string            `param:"id"`
+	Relative string            `param:"relative"`
 	Ctx      ntxctx.NTXContext `context:"ntx"`
 }
 
@@ -23,27 +23,27 @@ type GetDto struct {
 // The `json:",merge"` tag tells goose's input binder to spread the entire
 // JSON body into Body rather than looking for a nested "body" key.
 type CreateDto[C any] struct {
-	Body C                `json:",merge"`
+	Body C                 `json:",merge"`
 	Ctx  ntxctx.NTXContext `context:"ntx"`
 }
 
 // UpdateDto[U] carries the path :id param plus a merged JSON body.
 type UpdateDto[U any] struct {
-	ID   string           `param:"id"`
-	Body U                `json:",merge"`
+	ID   string            `param:"id"`
+	Body U                 `json:",merge"`
 	Ctx  ntxctx.NTXContext `context:"ntx"`
 }
 
 // UpsertDto[C] is like CreateDto with an additional ?update= query flag.
 type UpsertDto[C any] struct {
-	Body   C                `json:",merge"`
-	Update string           `query:"update"`
+	Body   C                 `json:",merge"`
+	Update string            `query:"update"`
 	Ctx    ntxctx.NTXContext `context:"ntx"`
 }
 
 // DeleteDto carries only the :id param.
 type DeleteDto struct {
-	ID  string           `param:"id"`
+	ID  string            `param:"id"`
 	Ctx ntxctx.NTXContext `context:"ntx"`
 }
 

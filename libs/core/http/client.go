@@ -32,7 +32,11 @@ func New(hmacKey string) *Client {
 // Internal makes an authenticated internal service call.
 // Adds HMAC headers (x-ntx-nonce, x-ntx-timestamp, authorization: hmac <sig>)
 // mirroring TS QuickHttpService.internal() exactly.
-func (c *Client) Internal(method, rawURL string, body, queries, headers any, retryCount int) (bool, int, string, any) {
+//
+// Returns the same 5-tuple as TS: (success, status, statusText, errBody, data).
+// errBody is non-nil only when the underlying request errored before a response
+// was received (slot reserved for parity with TS [success, status, statusText, error, data]).
+func (c *Client) Internal(method, rawURL string, body, queries, headers any, retryCount int) (bool, int, string, any, any) {
 	nonce := utils.UUID()
 	timestamp := fmt.Sprintf("%d", time.Now().UTC().UnixMilli())
 	sig, _ := security.GenerateHmac(map[string]any{"nonce": nonce, "timestamp": timestamp}, "sha256", c.HMACKey)
@@ -49,7 +53,19 @@ func (c *Client) Internal(method, rawURL string, body, queries, headers any, ret
 }
 
 // External makes an unauthenticated outbound HTTP call.
-func (c *Client) External(method, rawURL string, body, queries, headers any, retryCount int) (bool, int, string, any) {
+// Returns the same 5-tuple shape as Internal — see Internal docstring.
+func (c *Client) External(method, rawURL string, body, queries, headers any, retryCount int) (bool, int, string, any, any) {
+	h := toStringMap(headers)
+	if _, ok := h["content-type"]; !ok {
+		h["content-type"] = "application/json"
+	}
+	return c.request(method, rawURL, body, toStringMap(queries), h, retryCount)
+}
+
+// Request is the public no-auth entry point used by jsx-style HTTP wrappers
+// (blobs/flags/polylog) that supply their own bearer-token auth header.
+// Matches TS jsx-* request() shape: returns (success, status, statusText, errBody, data).
+func (c *Client) Request(method, rawURL string, body, queries, headers any, retryCount int) (bool, int, string, any, any) {
 	h := toStringMap(headers)
 	if _, ok := h["content-type"]; !ok {
 		h["content-type"] = "application/json"
@@ -59,10 +75,9 @@ func (c *Client) External(method, rawURL string, body, queries, headers any, ret
 
 // request is the shared retry loop. On non-2xx it retries retryCount more times
 // with 100 ms delay, matching TS retry({ delay: 100, count: retryCount }).
-func (c *Client) request(method, rawURL string, body any, queries, headers map[string]string, retryCount int) (bool, int, string, any) {
+func (c *Client) request(method, rawURL string, body any, queries, headers map[string]string, retryCount int) (bool, int, string, any, any) {
 	method = strings.ToUpper(method)
 
-	// Append query parameters
 	if len(queries) > 0 {
 		u, err := url.Parse(rawURL)
 		if err == nil {
@@ -80,6 +95,7 @@ func (c *Client) request(method, rawURL string, body any, queries, headers map[s
 		success    bool
 		statusCode int
 		statusText string
+		errBody    any
 		respData   any
 	)
 
@@ -96,18 +112,18 @@ func (c *Client) request(method, rawURL string, body any, queries, headers map[s
 			}
 		}
 
-		success, statusCode, statusText, respData = c.do(method, rawURL, bodyReader, headers)
+		success, statusCode, statusText, errBody, respData = c.do(method, rawURL, bodyReader, headers)
 		if success {
-			return success, statusCode, statusText, respData
+			return success, statusCode, statusText, errBody, respData
 		}
 	}
-	return success, statusCode, statusText, respData
+	return success, statusCode, statusText, errBody, respData
 }
 
-func (c *Client) do(method, rawURL string, body io.Reader, headers map[string]string) (bool, int, string, any) {
+func (c *Client) do(method, rawURL string, body io.Reader, headers map[string]string) (bool, int, string, any, any) {
 	req, err := http.NewRequest(method, rawURL, body)
 	if err != nil {
-		return false, 503, "Service is Down", err.Error()
+		return false, 503, "Service is Down", err.Error(), nil
 	}
 	for k, v := range headers {
 		req.Header.Set(k, v)
@@ -115,7 +131,7 @@ func (c *Client) do(method, rawURL string, body io.Reader, headers map[string]st
 
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
-		return false, 503, "Service is Down",
+		return false, 503, "Service is Down", err.Error(),
 			"One of our service is temporary down. We are on it, it would be back soon."
 	}
 	defer resp.Body.Close()
@@ -127,7 +143,7 @@ func (c *Client) do(method, rawURL string, body io.Reader, headers map[string]st
 	}
 
 	ok := resp.StatusCode >= 200 && resp.StatusCode <= 299
-	return ok, resp.StatusCode, resp.Status, data
+	return ok, resp.StatusCode, resp.Status, nil, data
 }
 
 // toStringMap coerces headers/queries to map[string]string.

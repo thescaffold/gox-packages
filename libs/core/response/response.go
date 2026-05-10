@@ -7,14 +7,16 @@ import (
 )
 
 // Envelope is the standard NTX API response body.
-// Matches the TypeScript response.util.ts shape exactly so existing clients are not broken:
-// {"status":"success|error","title":"...","message":"...","data":{...},"meta":{...}}
+// Matches the TypeScript BaseResponseBody (jsx-*/common/utils/values.ts) shape exactly:
+// {"status":"success|error","title":"...","message":"...","data":{...},"meta":{...},"raw":"...","headers":{...}}
 type Envelope struct {
-	Status  string `json:"status"`
-	Title   string `json:"title,omitempty"`
-	Message string `json:"message,omitempty"`
-	Data    any    `json:"data"`
-	Meta    any    `json:"meta,omitempty"`
+	Status  string            `json:"status"`
+	Title   string            `json:"title,omitempty"`
+	Message string            `json:"message,omitempty"`
+	Data    any               `json:"data"`
+	Meta    any               `json:"meta,omitempty"`
+	Raw     string            `json:"raw,omitempty"`
+	Headers map[string]string `json:"headers,omitempty"`
 }
 
 // PaginationMeta matches the TS CRUD factory pagination shape exactly.

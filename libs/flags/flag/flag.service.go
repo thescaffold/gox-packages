@@ -2,127 +2,242 @@ package flag
 
 import (
 	"fmt"
-	"sync"
+	"strings"
+
+	corehttp "github.com/thescaffold/gox-packages-core/http"
 )
 
-// FlagDef defines a feature flag.
-type FlagDef struct {
-	Name        string
-	Description string
-	// Enabled is the default state when no override is set.
-	Enabled bool
-	// Environments lists the env names where this flag is active ("production", "staging", …).
-	// Empty means all environments.
-	Environments []string
+// Flag mirrors jsx-packages/libs/flags/src/common/utils/values.ts Flag.
+type Flag struct {
+	Name      string `json:"name"`
+	Limit     int    `json:"limit"`
+	Priority  int    `json:"priority"`
+	Level     string `json:"level"`
+	Reference string `json:"reference,omitempty"`
+	Meta      any    `json:"meta,omitempty"`
+	Status    string `json:"status,omitempty"`
 }
 
-// LogOpts holds optional context for a Log call.
+// LogOpts holds optional context for a Log call. All fields are pointer-typed
+// so omitted values are not sent to the server (matching TS optional params).
 type LogOpts struct {
-	Limit       int
-	Level       string
-	UserID      string
-	ClientID    string
-	WorkspaceID string
+	Limit       *int
+	Level       *string
+	UserID      *string
+	ClientID    *string
+	WorkspaceID *string
 }
 
-// StatusOpts holds optional context for a Status call.
+// StatusOpts holds optional context for Status (and Limit) calls.
 type StatusOpts struct {
-	Level       string
-	UserID      string
-	ClientID    string
-	WorkspaceID string
+	Level       *string
+	UserID      *string
+	ClientID    *string
+	WorkspaceID *string
 }
 
 // LimitOpts holds optional context for a Limit call.
 type LimitOpts = StatusOpts
 
-// FlagService manages feature flags in memory.
+// LimitResult mirrors jsx-flags limit() response.data:
+// { allowed: boolean; limit: number; usage: number }.
+type LimitResult struct {
+	Allowed bool `json:"allowed"`
+	Limit   int  `json:"limit"`
+	Usage   int  `json:"usage"`
+}
+
+// Config is the subset of FlagsConfig that FlagService needs.
+type Config struct {
+	Server     string
+	Credential string
+	SourceId   string
+}
+
+// FlagService is an HTTP client for the scaffold flags server.
+// Mirrors jsx-packages/libs/flags/src/flag/index.ts.
 type FlagService struct {
-	mu   sync.RWMutex
-	env  string
-	defs map[string]FlagDef
-	logs map[string][]string // name → log entries
+	cfg    Config
+	client *corehttp.Client
 }
 
-// NewFlagService creates a FlagService for the given environment name.
-func NewFlagService(env string) *FlagService {
-	if env == "" {
-		env = "default"
+// NewFlagService creates a FlagService that POSTs to cfg.Server using cfg.Credential.
+func NewFlagService(cfg Config, client *corehttp.Client) *FlagService {
+	if client == nil {
+		client = corehttp.New("")
 	}
-	return &FlagService{
-		env:  env,
-		defs: map[string]FlagDef{},
-		logs: map[string][]string{},
-	}
+	return &FlagService{cfg: cfg, client: client}
 }
 
-// Register stores flag definitions, filtering to those active in the current env.
-func (s *FlagService) Register(flags []FlagDef, env string) {
-	if env != "" {
-		s.env = env
+// Register sends flag definitions to the server.
+// environmentTypeName defaults to "Go" when empty (TS uses "Javascript" — Go's analogue).
+// Returns the server's success boolean (mirrors TS register response.data: boolean).
+func (s *FlagService) Register(flags []Flag, environmentTypeName string) (bool, error) {
+	if environmentTypeName == "" {
+		environmentTypeName = "Go"
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for _, f := range flags {
-		s.defs[f.Name] = f
+	body := map[string]any{
+		"environmentType": map[string]any{"name": environmentTypeName},
+		"environment":     map[string]any{"name": s.cfg.SourceId},
+		"flags":           flags,
 	}
+	data, err := s.post("register", body)
+	if err != nil {
+		return false, err
+	}
+	if v, ok := data.(bool); ok {
+		return v, nil
+	}
+	return false, nil
 }
 
-// Log records a usage entry for the named flag (up to opts.Limit entries per flag).
-func (s *FlagService) Log(name string, opts LogOpts) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	entry := fmt.Sprintf("level=%s user=%s client=%s workspace=%s",
-		opts.Level, opts.UserID, opts.ClientID, opts.WorkspaceID)
-	limit := opts.Limit
-	if limit <= 0 {
-		limit = 1000
+// Log records a usage event for the named flag.
+func (s *FlagService) Log(name string, opts LogOpts) (bool, error) {
+	body := map[string]any{
+		"environment": map[string]any{"name": s.cfg.SourceId},
+		"name":        name,
 	}
-	entries := s.logs[name]
-	if len(entries) < limit {
-		s.logs[name] = append(entries, entry)
+	addOpt(body, "limit", opts.Limit)
+	addOpt(body, "level", opts.Level)
+	addOpt(body, "userId", opts.UserID)
+	addOpt(body, "clientId", opts.ClientID)
+	addOpt(body, "workspaceId", opts.WorkspaceID)
+
+	data, err := s.post("log", body)
+	if err != nil {
+		return false, err
 	}
+	if v, ok := data.(bool); ok {
+		return v, nil
+	}
+	return false, nil
 }
 
-// Status returns an enabled/disabled map for each named flag.
-// A flag is enabled if its definition has Enabled=true and (Environments is empty
-// or includes the current environment).
-func (s *FlagService) Status(names []string, opts StatusOpts) map[string]bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	out := make(map[string]bool, len(names))
-	for _, name := range names {
-		out[name] = s.isEnabled(name)
-	}
-	return out
-}
-
-// Limit returns whether the named flag is enabled and not yet exhausted.
-// For the in-memory implementation "exhausted" means no log slots remain.
-func (s *FlagService) Limit(name string, opts LimitOpts) (bool, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	if !s.isEnabled(name) {
+// Status accepts names as: a single string, []string (1D), or [][]string (2D).
+// Each shape is normalized to [][]string before sending, exactly like
+// jsx-flags status() (lines 69-77). Returns the server's response.data.
+func (s *FlagService) Status(names any, opts StatusOpts) (any, error) {
+	normalized, ok := normalizeNames(names)
+	if !ok {
 		return false, nil
 	}
-	return true, nil
+
+	body := map[string]any{
+		"environment": map[string]any{"name": s.cfg.SourceId},
+		"names":       normalized,
+	}
+	addOpt(body, "level", opts.Level)
+	addOpt(body, "userId", opts.UserID)
+	addOpt(body, "clientId", opts.ClientID)
+	addOpt(body, "workspaceId", opts.WorkspaceID)
+
+	return s.post("status", body)
 }
 
-func (s *FlagService) isEnabled(name string) bool {
-	def, ok := s.defs[name]
+// Limit returns the {allowed, limit, usage} info for the named flag.
+func (s *FlagService) Limit(name string, opts LimitOpts) (*LimitResult, error) {
+	body := map[string]any{
+		"environment": map[string]any{"name": s.cfg.SourceId},
+		"name":        name,
+	}
+	addOpt(body, "level", opts.Level)
+	addOpt(body, "userId", opts.UserID)
+	addOpt(body, "clientId", opts.ClientID)
+	addOpt(body, "workspaceId", opts.WorkspaceID)
+
+	data, err := s.post("limit", body)
+	if err != nil {
+		return nil, err
+	}
+	if data == nil {
+		return nil, nil
+	}
+	m, ok := data.(map[string]any)
 	if !ok {
-		return false
+		return nil, nil
 	}
-	if !def.Enabled {
-		return false
+	out := &LimitResult{}
+	if v, ok := m["allowed"].(bool); ok {
+		out.Allowed = v
 	}
-	if len(def.Environments) == 0 {
-		return true
+	if v, ok := m["limit"].(float64); ok {
+		out.Limit = int(v)
 	}
-	for _, e := range def.Environments {
-		if e == s.env {
-			return true
+	if v, ok := m["usage"].(float64); ok {
+		out.Usage = int(v)
+	}
+	return out, nil
+}
+
+// post wraps a single bearer-auth POST and unwraps the envelope's `data` field.
+func (s *FlagService) post(action string, body map[string]any) (any, error) {
+	url := fmt.Sprintf("%s/apps/flags/%s", strings.TrimRight(s.cfg.Server, "/"), action)
+	headers := map[string]string{
+		"authorization": "bearer " + s.cfg.Credential,
+		"content-type":  "application/json",
+	}
+	ok, status, statusText, _, resp := s.client.Request("POST", url, body, nil, headers, 0)
+	if !ok {
+		return nil, fmt.Errorf("flags %s: %d %s", action, status, statusText)
+	}
+	if env, isMap := resp.(map[string]any); isMap {
+		return env["data"], nil
+	}
+	return resp, nil
+}
+
+// normalizeNames converts the flexible names input to [][]string.
+// Mirrors jsx-flags lines 69-77.
+func normalizeNames(names any) ([][]string, bool) {
+	switch v := names.(type) {
+	case string:
+		return [][]string{{v}}, true
+	case []string:
+		return [][]string{v}, true
+	case [][]string:
+		return v, true
+	case []any:
+		// a heterogeneous slice — try to coerce each element
+		// to either a string (1D row) or another []any (2D inner row).
+		all1D := true
+		for _, el := range v {
+			if _, ok := el.(string); !ok {
+				all1D = false
+				break
+			}
 		}
+		if all1D {
+			row := make([]string, len(v))
+			for i, el := range v {
+				row[i] = el.(string)
+			}
+			return [][]string{row}, true
+		}
+		out := make([][]string, 0, len(v))
+		for _, el := range v {
+			inner, ok := el.([]any)
+			if !ok {
+				return nil, false
+			}
+			row := make([]string, len(inner))
+			for i, x := range inner {
+				str, ok := x.(string)
+				if !ok {
+					return nil, false
+				}
+				row[i] = str
+			}
+			out = append(out, row)
+		}
+		return out, true
 	}
-	return false
+	return nil, false
+}
+
+// addOpt sets body[key] = *p when p is non-nil. Mirrors TS optional query/body
+// params that omit the key entirely when undefined.
+func addOpt[T any](body map[string]any, key string, p *T) {
+	if p != nil {
+		body[key] = *p
+	}
 }

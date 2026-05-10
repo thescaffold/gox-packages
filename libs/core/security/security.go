@@ -6,12 +6,15 @@ import (
 	"crypto/hmac"
 	"crypto/md5"
 	"crypto/rand"
+	"crypto/sha1"
 	"crypto/sha256"
+	"crypto/sha512"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash"
 	"io"
 	"sort"
 	"strings"
@@ -108,28 +111,28 @@ func Decrypt(ciphertext, key string) (string, error) {
 	return string(unpadded), nil
 }
 
-// GenerateHmac signs payload (JSON-marshalled with sorted keys) using algo (sha256/sha512) and key.
+// GenerateHmac signs payload (JSON-marshalled with sorted keys) using algo and key.
+// Supported algos: "sha1", "sha256" (default), "sha384", "sha512" — matches Node's
+// crypto.createHmac surface that the TS QuickHttpService relies on.
 func GenerateHmac(payload any, algo, key string) (string, error) {
 	sorted, err := sortedJSON(payload)
 	if err != nil {
 		return "", err
 	}
-	var h []byte
-	switch algo {
+	var fn func() hash.Hash
+	switch strings.ToLower(algo) {
+	case "sha1":
+		fn = sha1.New
+	case "sha384":
+		fn = sha512.New384
 	case "sha512":
-		mac := hmac.New(sha256.New, []byte(key)) // sha512 not imported — use sha256 default
-		_ = mac
-		// use standard sha256 for both unless the caller requests sha512 explicitly
-		// For full parity add crypto/sha512 if needed
-		mac2 := hmac.New(sha256.New, []byte(key))
-		mac2.Write(sorted)
-		h = mac2.Sum(nil)
+		fn = sha512.New
 	default: // sha256
-		mac := hmac.New(sha256.New, []byte(key))
-		mac.Write(sorted)
-		h = mac.Sum(nil)
+		fn = sha256.New
 	}
-	return hex.EncodeToString(h), nil
+	mac := hmac.New(fn, []byte(key))
+	mac.Write(sorted)
+	return hex.EncodeToString(mac.Sum(nil)), nil
 }
 
 // CompareHmac verifies a hex HMAC signature against payload.

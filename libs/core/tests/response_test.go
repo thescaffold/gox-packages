@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/thescaffold/gox-packages-core/response"
 	test "github.com/awesome-goose/goose/testing"
+	"github.com/thescaffold/gox-packages-core/response"
 )
 
 func TestResponse(t *testing.T) {

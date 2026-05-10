@@ -14,15 +14,42 @@ import (
 // RenderHelpers is the map passed as lambdas to the Mustache renderer.
 // Each entry is a mustache.LambdaFunc (text string, render RenderFunc) (string, error).
 var RenderHelpers = map[string]any{
-	"xSanitizer":    mustache.LambdaFunc(func(text string, render mustache.RenderFunc) (string, error) { s, _ := render(text); return xSanitizer(s), nil }),
-	"xAlphanum":     mustache.LambdaFunc(func(text string, render mustache.RenderFunc) (string, error) { s, _ := render(text); return xAlphanum(s), nil }),
-	"xTime":         mustache.LambdaFunc(func(text string, render mustache.RenderFunc) (string, error) { s, _ := render(text); return xTime(s), nil }),
-	"xEnvValue":     mustache.LambdaFunc(func(text string, render mustache.RenderFunc) (string, error) { s, _ := render(text); return xEnvValue(s), nil }),
-	"xToBase64":     mustache.LambdaFunc(func(text string, render mustache.RenderFunc) (string, error) { s, _ := render(text); return xToBase64(s), nil }),
-	"xFromBase64":   mustache.LambdaFunc(func(text string, render mustache.RenderFunc) (string, error) { s, _ := render(text); return xFromBase64(s), nil }),
-	"xMajor":        mustache.LambdaFunc(func(text string, render mustache.RenderFunc) (string, error) { s, _ := render(text); return xMajor(s), nil }),
-	"xMinor":        mustache.LambdaFunc(func(text string, render mustache.RenderFunc) (string, error) { s, _ := render(text); return xMinor(s), nil }),
-	"xRandomSuffix": mustache.LambdaFunc(func(text string, render mustache.RenderFunc) (string, error) { _, _ = render(text); return xRandomSuffix(""), nil }),
+	"xSanitizer": mustache.LambdaFunc(func(text string, render mustache.RenderFunc) (string, error) {
+		s, _ := render(text)
+		return xSanitizer(s), nil
+	}),
+	"xAlphanum": mustache.LambdaFunc(func(text string, render mustache.RenderFunc) (string, error) {
+		s, _ := render(text)
+		return xAlphanum(s), nil
+	}),
+	"xTime": mustache.LambdaFunc(func(text string, render mustache.RenderFunc) (string, error) {
+		s, _ := render(text)
+		return xTime(s), nil
+	}),
+	"xEnvValue": mustache.LambdaFunc(func(text string, render mustache.RenderFunc) (string, error) {
+		s, _ := render(text)
+		return xEnvValue(s), nil
+	}),
+	"xToBase64": mustache.LambdaFunc(func(text string, render mustache.RenderFunc) (string, error) {
+		s, _ := render(text)
+		return xToBase64(s), nil
+	}),
+	"xFromBase64": mustache.LambdaFunc(func(text string, render mustache.RenderFunc) (string, error) {
+		s, _ := render(text)
+		return xFromBase64(s), nil
+	}),
+	"xMajor": mustache.LambdaFunc(func(text string, render mustache.RenderFunc) (string, error) {
+		s, _ := render(text)
+		return xMajor(s), nil
+	}),
+	"xMinor": mustache.LambdaFunc(func(text string, render mustache.RenderFunc) (string, error) {
+		s, _ := render(text)
+		return xMinor(s), nil
+	}),
+	"xRandomSuffix": mustache.LambdaFunc(func(text string, render mustache.RenderFunc) (string, error) {
+		_, _ = render(text)
+		return xRandomSuffix(""), nil
+	}),
 }
 
 // xSanitizer strips non-alphanumeric characters and lowercases the result.

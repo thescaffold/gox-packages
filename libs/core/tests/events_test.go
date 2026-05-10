@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/thescaffold/gox-packages-core/events"
 	test "github.com/awesome-goose/goose/testing"
+	"github.com/thescaffold/gox-packages-core/events"
 )
 
 func TestEvents(t *testing.T) {

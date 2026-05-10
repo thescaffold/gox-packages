@@ -1,11 +1,18 @@
-// Package polylog provides analytics event publishing over the NTX EventBus.
-// Import PolylogModule into your app module and inject EventsService to emit
-// Identify / Track / Message analytics events.
+// Package polylog is a Go HTTP client for the scaffold polylog server.
+// It mirrors jsx-packages/libs/polylog behavior: events are pushed to an
+// in-process queue and a background flusher POSTs them to
+// /apps/polylog/ingest/batch in 25-item chunks with exponential backoff.
 package polylog
 
-import (
-	"github.com/thescaffold/gox-packages-polylog/events"
-)
+import "github.com/thescaffold/gox-packages-polylog/events"
 
-// Re-export EventsService so callers only need one import.
+// Re-exports for single-import convenience.
 type EventsService = events.EventsService
+type Queue = events.Queue
+type Flusher = events.Flusher
+type Item = events.Item
+type CategoryType = events.CategoryType
+type EventEntityType = events.EventEntityType
+type IdentifyOptions = events.IdentifyOptions
+type TrackOptions = events.TrackOptions
+type MessageOptions = events.MessageOptions

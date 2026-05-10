@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"testing"
 
-	ntxctx "github.com/thescaffold/gox-packages-core/context"
 	test "github.com/awesome-goose/goose/testing"
+	ntxctx "github.com/thescaffold/gox-packages-core/context"
 )
 
 func TestContext(t *testing.T) {

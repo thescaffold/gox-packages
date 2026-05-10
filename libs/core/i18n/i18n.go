@@ -10,9 +10,9 @@ import (
 
 // serviceCache caches parsed YAML maps keyed by service name.
 var (
-	serviceCache   = map[string]map[string]any{}
-	translCache    = map[string]string{}
-	cacheMu        sync.RWMutex
+	serviceCache = map[string]map[string]any{}
+	translCache  = map[string]string{}
+	cacheMu      sync.RWMutex
 )
 
 // Translate resolves a dotted i18n path to a rendered string.

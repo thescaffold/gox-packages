@@ -49,7 +49,7 @@ func (s *HttpSuite) TestExternal_200_ReturnsSuccess() {
 	srv := newMockServer(200, map[string]any{"ok": true})
 	defer srv.Close()
 	c := ntxhttp.New("secret")
-	ok, status, _, data := c.External("GET", srv.URL+"/ping", nil, nil, nil, 0)
+	ok, status, _, _, data := c.External("GET", srv.URL+"/ping", nil, nil, nil, 0)
 	s.T.Expect(ok).ToEqual(true)
 	s.T.Expect(status).ToEqual(200)
 	s.T.Expect(data == nil).ToEqual(false)
@@ -59,7 +59,7 @@ func (s *HttpSuite) TestExternal_404_ReturnsFalse() {
 	srv := newMockServer(404, map[string]any{"error": "not found"})
 	defer srv.Close()
 	c := ntxhttp.New("secret")
-	ok, status, _, _ := c.External("GET", srv.URL+"/missing", nil, nil, nil, 0)
+	ok, status, _, _, _ := c.External("GET", srv.URL+"/missing", nil, nil, nil, 0)
 	s.T.Expect(ok).ToEqual(false)
 	s.T.Expect(status).ToEqual(404)
 }
@@ -73,7 +73,7 @@ func (s *HttpSuite) TestExternal_POST_SendsBody() {
 	}))
 	defer srv.Close()
 	c := ntxhttp.New("secret")
-	ok, status, _, _ := c.External("POST", srv.URL+"/items", map[string]any{"name": "widget"}, nil, nil, 0)
+	ok, status, _, _, _ := c.External("POST", srv.URL+"/items", map[string]any{"name": "widget"}, nil, nil, 0)
 	s.T.Expect(ok).ToEqual(true)
 	s.T.Expect(status).ToEqual(201)
 	s.T.Expect(received["name"]).ToEqual("widget")
@@ -105,7 +105,7 @@ func (s *HttpSuite) TestInternal_AddsHMACHeaders() {
 	}))
 	defer srv.Close()
 	c := ntxhttp.New("my-hmac-key")
-	ok, _, _, _ := c.Internal("GET", srv.URL+"/secure", nil, nil, nil, 0)
+	ok, _, _, _, _ := c.Internal("GET", srv.URL+"/secure", nil, nil, nil, 0)
 	s.T.Expect(ok).ToEqual(true)
 	s.T.Expect(gotNonce == "").ToEqual(false)
 	s.T.Expect(gotTimestamp == "").ToEqual(false)
@@ -142,7 +142,7 @@ func (s *HttpSuite) TestExternal_Retry_SucceedsOnSecondAttempt() {
 	}))
 	defer srv.Close()
 	c := ntxhttp.New("secret")
-	ok, status, _, _ := c.External("GET", srv.URL, nil, nil, nil, 1)
+	ok, status, _, _, _ := c.External("GET", srv.URL, nil, nil, nil, 1)
 	s.T.Expect(ok).ToEqual(true)
 	s.T.Expect(status).ToEqual(200)
 	s.T.Expect(attempts).ToEqual(2)
@@ -156,7 +156,7 @@ func (s *HttpSuite) TestExternal_Retry_ExhaustsAllAttempts() {
 	}))
 	defer srv.Close()
 	c := ntxhttp.New("secret")
-	ok, _, _, _ := c.External("GET", srv.URL, nil, nil, nil, 2)
+	ok, _, _, _, _ := c.External("GET", srv.URL, nil, nil, nil, 2)
 	s.T.Expect(ok).ToEqual(false)
 	s.T.Expect(attempts).ToEqual(3) // 1 initial + 2 retries
 }
@@ -166,7 +166,7 @@ func (s *HttpSuite) TestExternal_Retry_ExhaustsAllAttempts() {
 func (s *HttpSuite) TestExternal_UnreachableHost_Returns503() {
 	c := ntxhttp.New("secret")
 	c.HTTPClient.Timeout = 0 // let it fail fast with invalid host
-	ok, status, _, _ := c.External("GET", "http://127.0.0.1:1", nil, nil, nil, 0)
+	ok, status, _, _, _ := c.External("GET", "http://127.0.0.1:1", nil, nil, nil, 0)
 	s.T.Expect(ok).ToEqual(false)
 	s.T.Expect(status).ToEqual(503)
 }

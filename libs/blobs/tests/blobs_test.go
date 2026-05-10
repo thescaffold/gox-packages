@@ -1,7 +1,9 @@
 package tests
 
 import (
-	"io"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,6 +12,7 @@ import (
 	test "github.com/awesome-goose/goose/testing"
 	"github.com/thescaffold/gox-packages-blobs"
 	"github.com/thescaffold/gox-packages-blobs/files"
+	corehttp "github.com/thescaffold/gox-packages-core/http"
 )
 
 func TestBlobs(t *testing.T) {
@@ -20,82 +23,155 @@ type BlobsSuite struct {
 	test.Suite
 }
 
-// ── LocalProvider ──────────────────────────────────────────────────────────────
-
-func (s *BlobsSuite) TestLocalProvider_Upload_CreatesFile() {
-	dir, _ := os.MkdirTemp("", "blobs-test-*")
-	p := files.NewLocalProvider(dir)
-	r := strings.NewReader("hello world")
-	url, err := p.Upload(r, "test.txt", "bucket1", nil)
-	s.T.Expect(err).ToBeNil()
-	s.T.Expect(url).ToEqual("/storage/bucket1/test.txt")
-	_, statErr := os.Stat(filepath.Join(dir, "bucket1", "test.txt"))
-	s.T.Expect(statErr).ToBeNil()
+// scaffoldRecorder is a stub of the scaffold blobs server.
+// It records every request, replays canned responses, and counts batch chunks.
+type scaffoldRecorder struct {
+	*httptest.Server
+	authHeader string
+	initBody   map[string]any
+	verifyBody map[string]any
+	chunkCount int
+	chunks     []string
 }
 
-func (s *BlobsSuite) TestLocalProvider_Download_ReadsFile() {
-	dir, _ := os.MkdirTemp("", "blobs-test-*")
-	p := files.NewLocalProvider(dir)
-	// Write a file first
-	_ = os.MkdirAll(filepath.Join(dir, "bucket1"), 0o755)
-	_ = os.WriteFile(filepath.Join(dir, "bucket1", "hello.txt"), []byte("content"), 0o644)
+func newScaffoldRecorder() *scaffoldRecorder {
+	r := &scaffoldRecorder{}
+	r.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if req.Header.Get("Authorization") != "" {
+			r.authHeader = req.Header.Get("Authorization")
+		}
+		w.Header().Set("Content-Type", "application/json")
 
-	rc, err := p.Download("bucket1/hello.txt")
-	s.T.Expect(err).ToBeNil()
-	defer rc.Close()
-	data, _ := io.ReadAll(rc)
-	s.T.Expect(string(data)).ToEqual("content")
+		switch req.URL.Path {
+		case "/apps/blobs/upload/init":
+			_ = json.NewDecoder(req.Body).Decode(&r.initBody)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"status": "success",
+				"data":   map[string]any{"id": "file-123"},
+			})
+		case "/apps/blobs/upload/batch":
+			var body struct {
+				Pages []map[string]any `json:"pages"`
+			}
+			_ = json.NewDecoder(req.Body).Decode(&body)
+			r.chunkCount += len(body.Pages)
+			for _, p := range body.Pages {
+				if raw, ok := p["raw"].(string); ok {
+					r.chunks = append(r.chunks, raw)
+				}
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"status": "success",
+				"data":   map[string]any{"received": len(body.Pages)},
+			})
+		case "/apps/blobs/upload/verify":
+			_ = json.NewDecoder(req.Body).Decode(&r.verifyBody)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"status": "success",
+				"data": map[string]any{
+					"id":         "file-123",
+					"url":        r.URL + "/storage/file-123",
+					"pagesCount": r.chunkCount,
+				},
+			})
+		default:
+			http.NotFound(w, req)
+		}
+	}))
+	return r
 }
 
-func (s *BlobsSuite) TestLocalProvider_Download_MissingFile_ReturnsError() {
-	dir, _ := os.MkdirTemp("", "blobs-test-*")
-	p := files.NewLocalProvider(dir)
-	_, err := p.Download("bucket1/nope.txt")
-	s.T.Expect(err == nil).ToEqual(false)
-}
+// ── Module registration ───────────────────────────────────────────────────────
 
-// ── S3Provider stub ────────────────────────────────────────────────────────────
-
-func (s *BlobsSuite) TestS3Provider_Upload_ReturnsError() {
-	p := &files.S3Provider{}
-	_, err := p.Upload(strings.NewReader("x"), "f.txt", "b", nil)
-	s.T.Expect(err == nil).ToEqual(false)
-}
-
-func (s *BlobsSuite) TestS3Provider_Download_ReturnsError() {
-	p := &files.S3Provider{}
-	_, err := p.Download("anything")
-	s.T.Expect(err == nil).ToEqual(false)
-}
-
-// ── FilesService ───────────────────────────────────────────────────────────────
-
-func (s *BlobsSuite) TestFilesService_UploadReader_DelegatesToProvider() {
-	dir, _ := os.MkdirTemp("", "blobs-test-*")
-	svc := files.NewFilesService(files.NewLocalProvider(dir))
-	url, err := svc.UploadReader(strings.NewReader("data"), "doc.txt", "docs", nil)
-	s.T.Expect(err).ToBeNil()
-	s.T.Expect(url).ToEqual("/storage/docs/doc.txt")
-}
-
-// ── BlobsModule ────────────────────────────────────────────────────────────────
-
-func (s *BlobsSuite) TestRegister_Local_ReturnsModule() {
-	m := blobs.Register(blobs.BlobsConfig{Provider: blobs.ProviderLocal})
+func (s *BlobsSuite) TestRegister_ValidConfig_ReturnsModule() {
+	m := blobs.Register(blobs.BlobsConfig{
+		Server: "http://example.test", Credential: "tok", SourceId: "src",
+	})
 	s.T.Expect(m == nil).ToEqual(false)
 }
 
-func (s *BlobsSuite) TestDeclarations_Local_HasTwoEntries() {
-	m := blobs.Register(blobs.BlobsConfig{Provider: blobs.ProviderLocal})
-	s.T.Expect(len(m.Declarations())).ToEqual(2)
+func (s *BlobsSuite) TestRegister_MissingServer_Panics() {
+	defer func() {
+		s.T.Expect(recover() == nil).ToEqual(false)
+	}()
+	blobs.Register(blobs.BlobsConfig{Credential: "t", SourceId: "src"})
 }
 
-func (s *BlobsSuite) TestDeclarations_S3_HasTwoEntries() {
-	m := blobs.Register(blobs.BlobsConfig{Provider: blobs.ProviderS3})
-	s.T.Expect(len(m.Declarations())).ToEqual(2)
+func (s *BlobsSuite) TestRegister_MissingSourceId_Panics() {
+	defer func() {
+		s.T.Expect(recover() == nil).ToEqual(false)
+	}()
+	blobs.Register(blobs.BlobsConfig{Server: "http://x", Credential: "t"})
+}
+
+func (s *BlobsSuite) TestDeclarations_OneEntry() {
+	m := blobs.Register(blobs.BlobsConfig{
+		Server: "http://example.test", Credential: "tok", SourceId: "src",
+	})
+	s.T.Expect(len(m.Declarations())).ToEqual(1)
 }
 
 func (s *BlobsSuite) TestExports_MatchDeclarations() {
-	m := blobs.Register(blobs.BlobsConfig{Provider: blobs.ProviderLocal})
+	m := blobs.Register(blobs.BlobsConfig{
+		Server: "http://example.test", Credential: "tok", SourceId: "src",
+	})
 	s.T.Expect(len(m.Exports())).ToEqual(len(m.Declarations()))
+}
+
+// ── FilesService.Download ─────────────────────────────────────────────────────
+
+func (s *BlobsSuite) TestDownload_ReturnsServerURL() {
+	svc := files.NewFilesService(files.Config{
+		Server: "http://example.test", Credential: "tok", SourceId: "src",
+	}, corehttp.New(""))
+	url := svc.Download("abc")
+	s.T.Expect(url).ToEqual("http://example.test/apps/blobs/download/abc")
+}
+
+func (s *BlobsSuite) TestDownload_TrimsTrailingSlash() {
+	svc := files.NewFilesService(files.Config{
+		Server: "http://example.test/", Credential: "tok", SourceId: "src",
+	}, corehttp.New(""))
+	url := svc.Download("abc")
+	s.T.Expect(url).ToEqual("http://example.test/apps/blobs/download/abc")
+}
+
+// ── FilesService.Upload (drives init→batch→verify) ────────────────────────────
+
+func (s *BlobsSuite) TestUpload_DrivesInitBatchVerify() {
+	srv := newScaffoldRecorder()
+	defer srv.Close()
+	svc := files.NewFilesService(files.Config{
+		Server: srv.URL, Credential: "the-token", SourceId: "src-1",
+	}, corehttp.New(""))
+
+	dir, _ := os.MkdirTemp("", "blobs-up-*")
+	path := filepath.Join(dir, "hello.txt")
+	_ = os.WriteFile(path, []byte("hello world"), 0o644)
+
+	ok, urlOrErr := svc.Upload(path, "parent-1", []string{"a", "b"})
+	s.T.Expect(ok).ToEqual(true)
+	s.T.Expect(strings.HasPrefix(urlOrErr, srv.URL+"/storage/")).ToEqual(true)
+
+	s.T.Expect(strings.HasPrefix(srv.authHeader, "bearer ")).ToEqual(true)
+	s.T.Expect(srv.authHeader).ToEqual("bearer the-token")
+
+	s.T.Expect(srv.initBody["name"]).ToEqual("hello.txt")
+	s.T.Expect(srv.initBody["type"]).ToEqual("txt")
+	s.T.Expect(srv.initBody["mime"]).ToEqual("text/plain")
+	s.T.Expect(srv.initBody["parentId"]).ToEqual("parent-1")
+
+	s.T.Expect(srv.chunkCount > 0).ToEqual(true)
+	s.T.Expect(srv.verifyBody["name"]).ToEqual("hello.txt")
+}
+
+func (s *BlobsSuite) TestUpload_MissingFile_ReturnsFalse() {
+	srv := newScaffoldRecorder()
+	defer srv.Close()
+	svc := files.NewFilesService(files.Config{
+		Server: srv.URL, Credential: "tok", SourceId: "src",
+	}, corehttp.New(""))
+	ok, msg := svc.Upload("/no/such/file.txt", "", nil)
+	s.T.Expect(ok).ToEqual(false)
+	s.T.Expect(msg == "").ToEqual(false)
 }

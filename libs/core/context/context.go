@@ -3,6 +3,7 @@ package context
 import (
 	"encoding/base64"
 	"encoding/json"
+	"strings"
 
 	"github.com/awesome-goose/goose/types"
 	"github.com/thescaffold/gox-packages-core/utils"
@@ -29,6 +30,9 @@ type NTXContext struct {
 	Permissions []any
 	Scope       string
 	Preference  utils.KeyValue
+	// IP holds the originating client IP, parsed from x-forwarded-for (first hop)
+	// or x-real-ip. Mirrors TS get-ip.decorator.ts.
+	IP string
 }
 
 // Parse reads x-ntx-* headers from a goose Headers map and returns a populated NTXContext.
@@ -90,7 +94,21 @@ func Parse(headers map[string][]string) NTXContext {
 		Permissions: decodeSlice(get("x-ntx-permissions")),
 		Scope:       get("x-ntx-scope"),
 		Preference:  decodeKV(get("x-ntx-preference")),
+		IP:          parseIP(get("x-forwarded-for"), get("x-real-ip")),
 	}
+}
+
+// parseIP returns the originating client IP from forwarding headers.
+// X-Forwarded-For is a comma-separated list; the first entry is the original client.
+// Mirrors TS getIP() in get-ip.decorator.ts.
+func parseIP(forwardedFor, realIP string) string {
+	if forwardedFor != "" {
+		if idx := strings.Index(forwardedFor, ","); idx >= 0 {
+			return strings.TrimSpace(forwardedFor[:idx])
+		}
+		return strings.TrimSpace(forwardedFor)
+	}
+	return strings.TrimSpace(realIP)
 }
 
 // Format serializes an NTXContext back into HTTP headers for outbound calls.

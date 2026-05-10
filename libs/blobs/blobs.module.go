@@ -1,60 +1,73 @@
 package blobs
 
 import (
+	"errors"
+
 	"github.com/awesome-goose/goose/types"
 	"github.com/thescaffold/gox-packages-blobs/files"
+	corehttp "github.com/thescaffold/gox-packages-core/http"
 )
 
-// ProviderType selects the storage backend.
-type ProviderType string
+// LogType filters which log levels jsx-blobs will print.
+// Mirrors jsx-packages/libs/blobs/src/common/utils/values.ts LogType.
+type LogType string
 
 const (
-	ProviderLocal ProviderType = "local"
-	ProviderS3    ProviderType = "s3"
+	LogInfo  LogType = "info"
+	LogWarn  LogType = "warn"
+	LogError LogType = "error"
 )
 
-// BlobsConfig configures the BlobsModule.
+// BlobsConfig configures the BlobsModule. Mirrors jsx-blobs Config.
 type BlobsConfig struct {
-	Provider ProviderType
-	// LocalBaseDir is used when Provider == ProviderLocal (default: "./storage").
-	LocalBaseDir string
-	// S3* fields are used when Provider == ProviderS3.
-	// AccessKey and SecretKey are optional; if empty the default AWS credential chain is used.
-	S3Bucket    string
-	S3Region    string
-	S3Endpoint  string
-	S3AccessKey string
-	S3SecretKey string
+	// Server is the destination scaffold server base URL (required).
+	Server string
+	// Credential is the bearer access token for the scaffold server (required).
+	Credential string
+	// SourceId identifies the calling source (required).
+	SourceId string
+	// Logs filters which log levels are emitted (optional).
+	Logs []LogType
+	// Debug toggles verbose logging (optional).
+	Debug bool
 }
 
-// BlobsModule is a goose module that wires a StorageProvider and FilesService.
+// BlobsModule is a goose module that wires a FilesService HTTP client.
 type BlobsModule struct {
 	cfg BlobsConfig
+	svc *files.FilesService
 }
 
 // Register creates a BlobsModule with the given configuration.
+// It panics on invalid config (missing Server or SourceId), matching
+// jsx-blobs init() which throws synchronously on the same conditions.
 func Register(cfg BlobsConfig) *BlobsModule {
-	return &BlobsModule{cfg: cfg}
+	if err := cfg.validate(); err != nil {
+		panic(err)
+	}
+	client := corehttp.New("")
+	svc := files.NewFilesService(files.Config{
+		Server:     cfg.Server,
+		Credential: cfg.Credential,
+		SourceId:   cfg.SourceId,
+	}, client)
+	return &BlobsModule{cfg: cfg, svc: svc}
+}
+
+func (cfg BlobsConfig) validate() error {
+	if cfg.Server == "" {
+		return errors.New("blobs: invalid configuration - server not defined")
+	}
+	if cfg.SourceId == "" {
+		return errors.New("blobs: invalid configuration - sourceId not defined")
+	}
+	return nil
 }
 
 func (m *BlobsModule) Imports() []types.Module { return nil }
 
 func (m *BlobsModule) Declarations() []any {
-	var provider files.StorageProvider
-	switch m.cfg.Provider {
-	case ProviderS3:
-		provider = &files.S3Provider{
-			Bucket:    m.cfg.S3Bucket,
-			Region:    m.cfg.S3Region,
-			Endpoint:  m.cfg.S3Endpoint,
-			AccessKey: m.cfg.S3AccessKey,
-			SecretKey: m.cfg.S3SecretKey,
-		}
-	default:
-		provider = files.NewLocalProvider(m.cfg.LocalBaseDir)
-	}
-	svc := files.NewFilesService(provider)
-	return []any{provider, svc}
+	return []any{m.svc}
 }
 
 func (m *BlobsModule) Exports() []any {

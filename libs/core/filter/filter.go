@@ -8,7 +8,8 @@ import (
 
 // Result holds everything a CRUD handler needs to execute a filtered query.
 // It mirrors the TS makeFilter() return tuple exactly:
-//   [selector, page, perPage, columns, relations]
+//
+//	[selector, page, perPage, columns, relations]
 type Result struct {
 	// Conditions is a slice of OR-able WHERE maps.
 	// Each map entry is col→value (plain or LIKE) that the caller ANDs together.

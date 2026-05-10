@@ -5,8 +5,8 @@ import (
 	"time"
 
 	test "github.com/awesome-goose/goose/testing"
-	ntxctx "github.com/thescaffold/gox-packages-core/context"
 	"github.com/thescaffold/gox-packages-core/auth"
+	ntxctx "github.com/thescaffold/gox-packages-core/context"
 )
 
 func TestAuth(t *testing.T) {
