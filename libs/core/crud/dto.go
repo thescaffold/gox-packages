@@ -1,7 +1,7 @@
 package crud
 
 import (
-	ntxctx "github.com/thescaffold/gox-packages-core/context"
+	ntxctx "github.com/thescaffold/gox-packages/libs/core/context"
 )
 
 // ListDto is the input for List and FindByIds handlers.

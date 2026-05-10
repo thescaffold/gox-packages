@@ -7,10 +7,10 @@ import (
 
 	test "github.com/awesome-goose/goose/testing"
 	"github.com/awesome-goose/goose/types"
-	ntxctx "github.com/thescaffold/gox-packages-core/context"
-	"github.com/thescaffold/gox-packages-core/crud"
-	"github.com/thescaffold/gox-packages-core/response"
-	"github.com/thescaffold/gox-packages-core/utils"
+	ntxctx "github.com/thescaffold/gox-packages/libs/core/context"
+	"github.com/thescaffold/gox-packages/libs/core/crud"
+	"github.com/thescaffold/gox-packages/libs/core/response"
+	"github.com/thescaffold/gox-packages/libs/core/utils"
 )
 
 func TestCrud(t *testing.T) {

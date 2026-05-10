@@ -4,7 +4,7 @@
 // /apps/polylog/ingest/batch in 25-item chunks with exponential backoff.
 package polylog
 
-import "github.com/thescaffold/gox-packages-polylog/events"
+import "github.com/thescaffold/gox-packages/libs/polylog/events"
 
 // Re-exports for single-import convenience.
 type EventsService = events.EventsService

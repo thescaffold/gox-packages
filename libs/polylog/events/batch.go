@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	corehttp "github.com/thescaffold/gox-packages-core/http"
+	corehttp "github.com/thescaffold/gox-packages/libs/core/http"
 )
 
 // batchLimit matches jsx-polylog's `limit = 25` chunk size in request/batch.ts.

@@ -1,8 +1,8 @@
 package crud
 
 import (
-	ntxctx "github.com/thescaffold/gox-packages-core/context"
-	"github.com/thescaffold/gox-packages-core/utils"
+	ntxctx "github.com/thescaffold/gox-packages/libs/core/context"
+	"github.com/thescaffold/gox-packages/libs/core/utils"
 )
 
 // Hook names — match TS CrudActionType exactly.

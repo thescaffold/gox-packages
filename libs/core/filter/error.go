@@ -8,8 +8,8 @@ import (
 	"strings"
 
 	"github.com/awesome-goose/goose/types"
-	"github.com/thescaffold/gox-packages-core/events"
-	"github.com/thescaffold/gox-packages-core/response"
+	"github.com/thescaffold/gox-packages/libs/core/events"
+	"github.com/thescaffold/gox-packages/libs/core/response"
 )
 
 // HTTPError is the sentinel error a handler may return to map to a specific

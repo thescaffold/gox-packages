@@ -3,11 +3,13 @@ go 1.25.3
 // Goose framework (local development)
 use ../../awesome-goose/goose
 
-// Package modules — uncomment as each go.mod is created
-use ./libs/core
+use (
+	./libs/blobs
+	./libs/core
+	./libs/flags
+	./libs/polylog
+)
 
-use ./libs/polylog
-
-use ./libs/blobs
-
-use ./libs/flags
+// Workspace-only overrides so local development resolves to the in-tree copies
+// before tags exist. These are not used by consumers of the published modules.
+replace github.com/thescaffold/gox-packages/libs/core v0.0.1 => ./libs/core

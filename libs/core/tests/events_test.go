@@ -6,7 +6,7 @@ import (
 	"time"
 
 	test "github.com/awesome-goose/goose/testing"
-	"github.com/thescaffold/gox-packages-core/events"
+	"github.com/thescaffold/gox-packages/libs/core/events"
 )
 
 func TestEvents(t *testing.T) {

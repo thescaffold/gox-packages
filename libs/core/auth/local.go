@@ -5,7 +5,7 @@ import (
 	"net/http"
 
 	"github.com/awesome-goose/goose/types"
-	"github.com/thescaffold/gox-packages-core/response"
+	"github.com/thescaffold/gox-packages/libs/core/response"
 )
 
 // LocalCredentials is the body shape for a local-strategy login request.

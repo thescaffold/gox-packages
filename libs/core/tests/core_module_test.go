@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	test "github.com/awesome-goose/goose/testing"
-	"github.com/thescaffold/gox-packages-core/module"
+	"github.com/thescaffold/gox-packages/libs/core/module"
 )
 
 func TestCoreModule(t *testing.T) {

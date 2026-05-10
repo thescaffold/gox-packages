@@ -5,8 +5,8 @@ import (
 	"time"
 
 	"github.com/awesome-goose/goose/types"
-	corehttp "github.com/thescaffold/gox-packages-core/http"
-	"github.com/thescaffold/gox-packages-polylog/events"
+	corehttp "github.com/thescaffold/gox-packages/libs/core/http"
+	"github.com/thescaffold/gox-packages/libs/polylog/events"
 )
 
 // LogConfig mirrors jsx-polylog Config.log.

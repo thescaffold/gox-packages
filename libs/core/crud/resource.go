@@ -8,9 +8,9 @@ import (
 	"strings"
 
 	"github.com/awesome-goose/goose/types"
-	ntxctx "github.com/thescaffold/gox-packages-core/context"
-	"github.com/thescaffold/gox-packages-core/filter"
-	"github.com/thescaffold/gox-packages-core/response"
+	ntxctx "github.com/thescaffold/gox-packages/libs/core/context"
+	"github.com/thescaffold/gox-packages/libs/core/filter"
+	"github.com/thescaffold/gox-packages/libs/core/response"
 )
 
 // CrudResource[E, C, U] is embedded in a goose controller to provide standard

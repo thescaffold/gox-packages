@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	test "github.com/awesome-goose/goose/testing"
-	"github.com/thescaffold/gox-packages-core/i18n"
+	"github.com/thescaffold/gox-packages/libs/core/i18n"
 )
 
 func TestI18n(t *testing.T) {

@@ -6,7 +6,7 @@ package marker
 import (
 	"time"
 
-	"github.com/thescaffold/gox-packages-core/services"
+	"github.com/thescaffold/gox-packages/libs/core/services"
 )
 
 const baseKey = "packages.core.marker"

@@ -6,7 +6,7 @@ import (
 	"time"
 
 	test "github.com/awesome-goose/goose/testing"
-	"github.com/thescaffold/gox-packages-core/utils"
+	"github.com/thescaffold/gox-packages/libs/core/utils"
 )
 
 func TestUtils(t *testing.T) {

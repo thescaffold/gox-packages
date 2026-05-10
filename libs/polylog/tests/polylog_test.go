@@ -10,9 +10,9 @@ import (
 	"time"
 
 	test "github.com/awesome-goose/goose/testing"
-	corehttp "github.com/thescaffold/gox-packages-core/http"
-	"github.com/thescaffold/gox-packages-polylog"
-	"github.com/thescaffold/gox-packages-polylog/events"
+	corehttp "github.com/thescaffold/gox-packages/libs/core/http"
+	"github.com/thescaffold/gox-packages/libs/polylog"
+	"github.com/thescaffold/gox-packages/libs/polylog/events"
 )
 
 func TestPolylog(t *testing.T) {

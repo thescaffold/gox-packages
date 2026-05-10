@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	corehttp "github.com/thescaffold/gox-packages-core/http"
+	corehttp "github.com/thescaffold/gox-packages/libs/core/http"
 )
 
 // chunkSize matches jsx-blobs streamFileChunks default of 512 KiB.

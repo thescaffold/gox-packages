@@ -5,7 +5,7 @@ package throttler
 import (
 	"time"
 
-	"github.com/thescaffold/gox-packages-core/services"
+	"github.com/thescaffold/gox-packages/libs/core/services"
 )
 
 // Service applies a sliding-window rate limit to an id key.

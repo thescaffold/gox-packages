@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/thescaffold/gox-packages-core/services"
+	"github.com/thescaffold/gox-packages/libs/core/services"
 )
 
 // Service runs a function exactly once across instances using a cache lock.

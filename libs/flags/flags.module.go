@@ -4,8 +4,8 @@ import (
 	"errors"
 
 	"github.com/awesome-goose/goose/types"
-	corehttp "github.com/thescaffold/gox-packages-core/http"
-	"github.com/thescaffold/gox-packages-flags/flag"
+	corehttp "github.com/thescaffold/gox-packages/libs/core/http"
+	"github.com/thescaffold/gox-packages/libs/flags/flag"
 )
 
 // LogType filters which log levels jsx-flags will print.

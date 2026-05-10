@@ -3,7 +3,7 @@
 // and download URL construction. Use BlobsModule.Register(cfg) to wire FilesService.
 package blobs
 
-import "github.com/thescaffold/gox-packages-blobs/files"
+import "github.com/thescaffold/gox-packages/libs/blobs/files"
 
 // Re-exports for single-import convenience.
 type FilesService = files.FilesService

@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	test "github.com/awesome-goose/goose/testing"
-	"github.com/thescaffold/gox-packages-core/security"
+	"github.com/thescaffold/gox-packages/libs/core/security"
 )
 
 func TestSecurity(t *testing.T) {

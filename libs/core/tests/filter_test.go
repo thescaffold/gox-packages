@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	test "github.com/awesome-goose/goose/testing"
-	"github.com/thescaffold/gox-packages-core/filter"
+	"github.com/thescaffold/gox-packages/libs/core/filter"
 )
 
 func TestFilter(t *testing.T) {

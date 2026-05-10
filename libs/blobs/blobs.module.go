@@ -4,8 +4,8 @@ import (
 	"errors"
 
 	"github.com/awesome-goose/goose/types"
-	"github.com/thescaffold/gox-packages-blobs/files"
-	corehttp "github.com/thescaffold/gox-packages-core/http"
+	"github.com/thescaffold/gox-packages/libs/blobs/files"
+	corehttp "github.com/thescaffold/gox-packages/libs/core/http"
 )
 
 // LogType filters which log levels jsx-blobs will print.

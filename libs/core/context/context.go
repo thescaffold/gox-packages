@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/awesome-goose/goose/types"
-	"github.com/thescaffold/gox-packages-core/utils"
+	"github.com/thescaffold/gox-packages/libs/core/utils"
 )
 
 // contextKey is the string key used to store NTXContext.

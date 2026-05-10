@@ -3,7 +3,7 @@
 // Use FlagsModule.Register(cfg) to wire FlagService.
 package flags
 
-import "github.com/thescaffold/gox-packages-flags/flag"
+import "github.com/thescaffold/gox-packages/libs/flags/flag"
 
 // Re-exports for single-import convenience.
 type FlagService = flag.FlagService

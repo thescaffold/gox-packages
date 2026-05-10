@@ -10,7 +10,7 @@ import (
 
 	test "github.com/awesome-goose/goose/testing"
 	"github.com/gorilla/websocket"
-	"github.com/thescaffold/gox-packages-core/ws"
+	"github.com/thescaffold/gox-packages/libs/core/ws"
 )
 
 func TestWs(t *testing.T) {

@@ -1,4 +1,4 @@
-module github.com/thescaffold/gox-packages-core
+module github.com/thescaffold/gox-packages/libs/core
 
 go 1.25.3
 

@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/awesome-goose/goose/types"
-	"github.com/thescaffold/gox-packages-core/response"
+	"github.com/thescaffold/gox-packages/libs/core/response"
 )
 
 // errTooManyRequests is the sentinel returned when the per-user limit is hit.

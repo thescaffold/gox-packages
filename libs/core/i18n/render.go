@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/cbroglie/mustache"
-	"github.com/thescaffold/gox-packages-core/utils"
+	"github.com/thescaffold/gox-packages/libs/core/utils"
 )
 
 // RenderHelpers is the map passed as lambdas to the Mustache renderer.

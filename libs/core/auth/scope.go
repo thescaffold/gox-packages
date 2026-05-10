@@ -3,7 +3,7 @@ package auth
 import (
 	"strings"
 
-	ntxctx "github.com/thescaffold/gox-packages-core/context"
+	ntxctx "github.com/thescaffold/gox-packages/libs/core/context"
 )
 
 // ExpandScopeObject mirrors TS expandScopeObject: walks every key in obj

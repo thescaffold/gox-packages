@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/thescaffold/gox-packages-core/security"
-	"github.com/thescaffold/gox-packages-core/services"
-	"github.com/thescaffold/gox-packages-core/utils"
+	"github.com/thescaffold/gox-packages/libs/core/security"
+	"github.com/thescaffold/gox-packages/libs/core/services"
+	"github.com/thescaffold/gox-packages/libs/core/utils"
 )
 
 // OTP is the persisted record. Mirrors the TS otp object shape.

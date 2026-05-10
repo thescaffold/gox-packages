@@ -7,9 +7,9 @@ import (
 	"testing"
 
 	test "github.com/awesome-goose/goose/testing"
-	corehttp "github.com/thescaffold/gox-packages-core/http"
-	"github.com/thescaffold/gox-packages-flags"
-	"github.com/thescaffold/gox-packages-flags/flag"
+	corehttp "github.com/thescaffold/gox-packages/libs/core/http"
+	"github.com/thescaffold/gox-packages/libs/flags"
+	"github.com/thescaffold/gox-packages/libs/flags/flag"
 )
 
 func TestFlags(t *testing.T) {

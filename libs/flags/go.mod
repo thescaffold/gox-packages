@@ -1,10 +1,10 @@
-module github.com/thescaffold/gox-packages-flags
+module github.com/thescaffold/gox-packages/libs/flags
 
 go 1.25.3
 
 require (
 	github.com/awesome-goose/goose v0.0.6
-	github.com/thescaffold/gox-packages-core v0.0.0
+	github.com/thescaffold/gox-packages/libs/core v0.0.1
 )
 
 require (
@@ -13,5 +13,3 @@ require (
 	golang.org/x/crypto v0.50.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
-replace github.com/thescaffold/gox-packages-core v0.0.0 => ../core

@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/thescaffold/gox-packages-core/security"
-	"github.com/thescaffold/gox-packages-core/utils"
+	"github.com/thescaffold/gox-packages/libs/core/security"
+	"github.com/thescaffold/gox-packages/libs/core/utils"
 )
 
 // Client is a retry-capable HTTP client for inter-service calls.

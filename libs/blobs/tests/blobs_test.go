@@ -10,9 +10,9 @@ import (
 	"testing"
 
 	test "github.com/awesome-goose/goose/testing"
-	"github.com/thescaffold/gox-packages-blobs"
-	"github.com/thescaffold/gox-packages-blobs/files"
-	corehttp "github.com/thescaffold/gox-packages-core/http"
+	"github.com/thescaffold/gox-packages/libs/blobs"
+	"github.com/thescaffold/gox-packages/libs/blobs/files"
+	corehttp "github.com/thescaffold/gox-packages/libs/core/http"
 )
 
 func TestBlobs(t *testing.T) {

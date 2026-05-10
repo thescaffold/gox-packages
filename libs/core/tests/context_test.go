@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	test "github.com/awesome-goose/goose/testing"
-	ntxctx "github.com/thescaffold/gox-packages-core/context"
+	ntxctx "github.com/thescaffold/gox-packages/libs/core/context"
 )
 
 func TestContext(t *testing.T) {

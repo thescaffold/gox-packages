@@ -3,7 +3,7 @@ package events
 import (
 	"strings"
 
-	"github.com/thescaffold/gox-packages-core/utils"
+	"github.com/thescaffold/gox-packages/libs/core/utils"
 )
 
 // TrackerService mirrors the TS TrackerService, publishing typed analytics events

@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"strings"
 
-	corehttp "github.com/thescaffold/gox-packages-core/http"
+	corehttp "github.com/thescaffold/gox-packages/libs/core/http"
 )
 
 // Service is the platform façade. Construct with New(client, baseURL).

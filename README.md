@@ -8,12 +8,12 @@ Shared Go libraries for Goose-based microservices — the Go rewrite of the `ntx
 
 ## Packages
 
-| Package | Module | Purpose |
-|---------|--------|---------|
-| [blobs](libs/blobs/README.md) | `gox-packages-blobs` | File storage — local filesystem and AWS S3 |
-| [core](libs/core/README.md) | `gox-packages-core` | Auth, CRUD, events, HTTP client, response helpers, utils, image |
-| [flags](libs/flags/README.md) | `gox-packages-flags` | In-memory feature flag management |
-| [polylog](libs/polylog/README.md) | `gox-packages-polylog` | Analytics event tracking (identify/track/message) |
+| Package | Module path | Purpose |
+|---------|-------------|---------|
+| [blobs](libs/blobs/README.md) | `github.com/thescaffold/gox-packages/libs/blobs` | File storage — local filesystem and AWS S3 |
+| [core](libs/core/README.md) | `github.com/thescaffold/gox-packages/libs/core` | Auth, CRUD, events, HTTP client, response helpers, utils, image |
+| [flags](libs/flags/README.md) | `github.com/thescaffold/gox-packages/libs/flags` | In-memory feature flag management |
+| [polylog](libs/polylog/README.md) | `github.com/thescaffold/gox-packages/libs/polylog` | Analytics event tracking (identify/track/message) |
 
 ## Repository Structure
 
@@ -54,7 +54,7 @@ gox-packages/
 
 ### Prerequisites
 
-- Go 1.21+
+- Go 1.25+
 
 ### Build all packages
 
@@ -73,19 +73,13 @@ go test ./...
 Add the library to your service's `go.mod`:
 
 ```bash
-go get github.com/thescaffold/gox-packages-core@latest
-```
-
-Or, within the workspace, use a `replace` directive:
-
-```
-replace github.com/thescaffold/gox-packages-core v0.0.0 => ../gox-packages/libs/core
+go get github.com/thescaffold/gox-packages/libs/core@latest
 ```
 
 Import the module in your `AppModule`:
 
 ```go
-import "github.com/thescaffold/gox-packages-core/module"
+import "github.com/thescaffold/gox-packages/libs/core/module"
 
 func (m *AppModule) Imports() []types.Module {
     return []types.Module{
@@ -94,6 +88,44 @@ func (m *AppModule) Imports() []types.Module {
     }
 }
 ```
+
+## Publishing a release
+
+Each lib is a standalone Go module versioned with path-prefixed tags. Always
+release `core` first, since the other libs depend on it.
+
+```bash
+# 1. Ensure main is clean and pushed
+git status
+git push origin main
+
+# 2. Tag and push core
+git tag libs/core/v0.0.1
+git push origin libs/core/v0.0.1
+
+# 3. Tag the dependents (after core is on the remote)
+git tag libs/polylog/v0.0.1 libs/blobs/v0.0.1 libs/flags/v0.0.1
+git push origin libs/polylog/v0.0.1 libs/blobs/v0.0.1 libs/flags/v0.0.1
+```
+
+Consumers then resolve each module independently:
+
+```bash
+go get github.com/thescaffold/gox-packages/libs/core@v0.0.1
+go get github.com/thescaffold/gox-packages/libs/polylog@v0.0.1
+```
+
+For subsequent releases, bump each lib's version independently — e.g. a `core`
+patch ships as `libs/core/v0.0.2` without touching the others. Bump the
+corresponding `require` line in any dependent lib whose code changed and tag it
+too.
+
+### Local development before tags exist
+
+`go.work` includes a `replace` directive so the workspace resolves to the
+in-tree copy of `core` even before `libs/core/v0.0.1` is published. This
+directive lives only in `go.work` and is not seen by consumers of the published
+modules — published `go.mod` files stay clean.
 
 ## Contributing
 

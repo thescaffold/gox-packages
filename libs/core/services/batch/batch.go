@@ -8,7 +8,7 @@ import (
 	"math"
 	"time"
 
-	syncsvc "github.com/thescaffold/gox-packages-core/services/sync"
+	syncsvc "github.com/thescaffold/gox-packages/libs/core/services/sync"
 )
 
 // Contract describes a paginated batch source. Mirrors TS BatchContract<T>.

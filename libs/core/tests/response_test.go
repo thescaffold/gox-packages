@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	test "github.com/awesome-goose/goose/testing"
-	"github.com/thescaffold/gox-packages-core/response"
+	"github.com/thescaffold/gox-packages/libs/core/response"
 )
 
 func TestResponse(t *testing.T) {

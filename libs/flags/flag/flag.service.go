@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	corehttp "github.com/thescaffold/gox-packages-core/http"
+	corehttp "github.com/thescaffold/gox-packages/libs/core/http"
 )
 
 // Flag mirrors jsx-packages/libs/flags/src/common/utils/values.ts Flag.
