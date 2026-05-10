@@ -3,33 +3,37 @@ name: Publish
 on:
   push:
     tags:
-      - "*/v*"           # e.g. core/v1.0.0  or  blobs/v0.3.1
+      - "libs/*/v*"        # e.g. libs/core/v1.0.0  or  libs/blobs/v0.3.1
 
 jobs:
   publish:
     name: Tag and publish package
     runs-on: ubuntu-latest
+    # go.work references paths outside the checkout — disable workspace mode.
+    env:
+      GOWORK: "off"
 
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: "1.22"
-
-      # Extract package name and version from the tag (e.g. "core/v1.0.0")
+      # Extract package name and version from the tag (e.g. "libs/core/v1.0.0")
       - name: Parse tag
         id: parse
         run: |
           TAG="${{ github.ref_name }}"
-          PKG="${TAG%%/*}"
+          PKG=$(echo "$TAG" | cut -d/ -f2)
           VERSION="${TAG##*/}"
           echo "pkg=$PKG" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "module=github.com/thescaffold/gox-packages-$PKG" >> "$GITHUB_OUTPUT"
+          echo "module=github.com/thescaffold/gox-packages/libs/$PKG" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: libs/${{ steps.parse.outputs.pkg }}/go.mod
+          cache-dependency-path: libs/${{ steps.parse.outputs.pkg }}/go.sum
 
       - name: Verify build
         working-directory: libs/${{ steps.parse.outputs.pkg }}

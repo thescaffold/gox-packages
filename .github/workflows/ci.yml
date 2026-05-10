@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, dev, develop]
   pull_request:
     branches: [main]
 
@@ -10,6 +10,10 @@ jobs:
   test:
     name: Test (${{ matrix.pkg }})
     runs-on: ubuntu-latest
+    # go.work references paths outside the checkout (../../awesome-goose/goose).
+    # Disable workspace mode so each lib resolves dependencies via its own go.mod.
+    env:
+      GOWORK: "off"
     strategy:
       fail-fast: false
       matrix:
