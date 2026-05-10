@@ -8,12 +8,12 @@ Shared Go libraries for Goose-based microservices — the Go rewrite of the `ntx
 
 ## Packages
 
-| Package | Module path | Purpose |
-|---------|-------------|---------|
-| [blobs](libs/blobs/README.md) | `github.com/thescaffold/gox-packages/libs/blobs` | File storage — local filesystem and AWS S3 |
-| [core](libs/core/README.md) | `github.com/thescaffold/gox-packages/libs/core` | Auth, CRUD, events, HTTP client, response helpers, utils, image |
-| [flags](libs/flags/README.md) | `github.com/thescaffold/gox-packages/libs/flags` | In-memory feature flag management |
-| [polylog](libs/polylog/README.md) | `github.com/thescaffold/gox-packages/libs/polylog` | Analytics event tracking (identify/track/message) |
+| Package                           | Module path                                        | Purpose                                                         |
+| --------------------------------- | -------------------------------------------------- | --------------------------------------------------------------- |
+| [blobs](libs/blobs/README.md)     | `github.com/thescaffold/gox-packages/libs/blobs`   | File storage — local filesystem and AWS S3                      |
+| [core](libs/core/README.md)       | `github.com/thescaffold/gox-packages/libs/core`    | Auth, CRUD, events, HTTP client, response helpers, utils, image |
+| [flags](libs/flags/README.md)     | `github.com/thescaffold/gox-packages/libs/flags`   | In-memory feature flag management                               |
+| [polylog](libs/polylog/README.md) | `github.com/thescaffold/gox-packages/libs/polylog` | Analytics event tracking (identify/track/message)               |
 
 ## Repository Structure
 
@@ -91,34 +91,37 @@ func (m *AppModule) Imports() []types.Module {
 
 ## Publishing a release
 
-Each lib is a standalone Go module versioned with path-prefixed tags. Always
-release `core` first, since the other libs depend on it.
+Each lib is a standalone Go module versioned with path-prefixed tags. All four
+libs are released together at the same version via:
 
 ```bash
-# 1. Ensure main is clean and pushed
-git status
-git push origin main
-
-# 2. Tag and push core
-git tag libs/core/v0.0.1
-git push origin libs/core/v0.0.1
-
-# 3. Tag the dependents (after core is on the remote)
-git tag libs/polylog/v0.0.1 libs/blobs/v0.0.1 libs/flags/v0.0.1
-git push origin libs/polylog/v0.0.1 libs/blobs/v0.0.1 libs/flags/v0.0.1
+make publish version=0.0.1
 ```
 
-Consumers then resolve each module independently:
+This bumps the `require core` line in `polylog`/`blobs`/`flags` to the new
+version, updates the `go.work` replace, commits the change, pushes `main`, then
+tags `libs/core/v0.0.1` first (dependents require it) followed by the other
+three libs.
+
+The working tree must be clean before publishing — `make publish` aborts if
+there are uncommitted changes.
+
+Consumers resolve each module independently:
 
 ```bash
 go get github.com/thescaffold/gox-packages/libs/core@v0.0.1
 go get github.com/thescaffold/gox-packages/libs/polylog@v0.0.1
 ```
 
-For subsequent releases, bump each lib's version independently — e.g. a `core`
-patch ships as `libs/core/v0.0.2` without touching the others. Bump the
-corresponding `require` line in any dependent lib whose code changed and tag it
-too.
+### Releasing a single lib
+
+If only `core` needs a new release (e.g. a patch), invoke the tag flow manually
+instead of `make publish`:
+
+```bash
+git tag libs/core/v0.0.2
+git push origin libs/core/v0.0.2
+```
 
 ### Local development before tags exist
 
