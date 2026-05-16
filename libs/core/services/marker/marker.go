@@ -32,7 +32,9 @@ func (s *Service) Mark(key, value string, expiry time.Duration) {
 // the marker is deleted on a successful verify (single-use semantics).
 func (s *Service) Verify(key, value string, clear bool) bool {
 	existing, ok := s.cache.Get(baseKey + ":" + key)
-	if !ok || existing != value {
+	// TS guards with `if (existingValue && existingValue == value)` — a falsy
+	// (empty/missing) stored value never verifies, even against an empty value.
+	if !ok || existing == "" || existing != value {
 		return false
 	}
 	if clear {

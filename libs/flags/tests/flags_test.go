@@ -66,8 +66,9 @@ func (s *FlagsSuite) TestRegister_PostsExpectedBody() {
 	s.T.Expect(srv.lastPath).ToEqual("/apps/flags/register")
 	s.T.Expect(srv.authHeader).ToEqual("bearer tok")
 
+	// jsx-flags register() defaults environmentTypeName to "Javascript".
 	envType, _ := srv.lastBody["environmentType"].(map[string]any)
-	s.T.Expect(envType["name"]).ToEqual("Go")
+	s.T.Expect(envType["name"]).ToEqual("Javascript")
 	env, _ := srv.lastBody["environment"].(map[string]any)
 	s.T.Expect(env["name"]).ToEqual("src-1")
 }

@@ -2,7 +2,6 @@ package flag
 
 import (
 	"fmt"
-	"strings"
 
 	corehttp "github.com/thescaffold/gox-packages/libs/core/http"
 )
@@ -70,11 +69,12 @@ func NewFlagService(cfg Config, client *corehttp.Client) *FlagService {
 }
 
 // Register sends flag definitions to the server.
-// environmentTypeName defaults to "Go" when empty (TS uses "Javascript" — Go's analogue).
+// environmentTypeName defaults to "Javascript" when empty, matching
+// jsx-flags register() (jsx-packages/libs/flags/src/flag/index.ts:8).
 // Returns the server's success boolean (mirrors TS register response.data: boolean).
 func (s *FlagService) Register(flags []Flag, environmentTypeName string) (bool, error) {
 	if environmentTypeName == "" {
-		environmentTypeName = "Go"
+		environmentTypeName = "Javascript"
 	}
 	body := map[string]any{
 		"environmentType": map[string]any{"name": environmentTypeName},
@@ -170,8 +170,10 @@ func (s *FlagService) Limit(name string, opts LimitOpts) (*LimitResult, error) {
 }
 
 // post wraps a single bearer-auth POST and unwraps the envelope's `data` field.
+// The URL is built by plain concatenation, matching jsx-flags
+// `${config.server}/apps/flags/<action>` (no trailing-slash trimming).
 func (s *FlagService) post(action string, body map[string]any) (any, error) {
-	url := fmt.Sprintf("%s/apps/flags/%s", strings.TrimRight(s.cfg.Server, "/"), action)
+	url := fmt.Sprintf("%s/apps/flags/%s", s.cfg.Server, action)
 	headers := map[string]string{
 		"authorization": "bearer " + s.cfg.Credential,
 		"content-type":  "application/json",

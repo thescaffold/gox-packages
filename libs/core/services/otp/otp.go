@@ -53,8 +53,15 @@ func (s *Service) Initiate(otpType, userID, owner, source string) *OTP {
 	}
 
 	value := utils.RandomDigits(3) + utils.RandomDigits(3)
-	hashed := security.ToBase64(fmt.Sprintf(`{"value":%q,"owner":%q,"type":%q,"userId":%q}`,
-		value, owner, otpType, userID))
+	// hashed = toBase64(JSON.stringify({ value, owner, type, userId })) — the
+	// field order matches the TS object-literal insertion order exactly.
+	hashedJSON, _ := json.Marshal(struct {
+		Value  string `json:"value"`
+		Owner  string `json:"owner"`
+		Type   string `json:"type"`
+		UserID string `json:"userId"`
+	}{value, owner, otpType, userID})
+	hashed := security.ToBase64(string(hashedJSON))
 	otp := OTP{
 		Value:      value,
 		Owner:      owner,

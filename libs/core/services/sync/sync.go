@@ -39,7 +39,12 @@ func (s *Service) Once(key string, fn func() error, timeout time.Duration, relea
 	now := time.Now().UnixMilli()
 	nowStr := strconv.FormatInt(now, 10)
 
-	if !s.cache.Setnx(key, nowStr, timeout) {
+	// TS calls cacheService.setnx(key, ts) / getset(key, ts) / set(`${key}:done`)
+	// WITHOUT a ttl argument, so the CacheService default of 5 minutes (300s)
+	// applies. `timeout` is only used for the timestamp-based staleness check.
+	const lockTTL = 5 * time.Minute
+
+	if !s.cache.Setnx(key, nowStr, lockTTL) {
 		// Lock exists — check if it's outdated.
 		lockTS, ok := s.cache.Get(key)
 		if !ok {
@@ -51,18 +56,16 @@ func (s *Service) Once(key string, fn func() error, timeout time.Duration, relea
 			return nil
 		}
 		// Lock outdated — try to take over.
-		old := s.cache.Getset(key, nowStr, timeout)
+		old := s.cache.Getset(key, nowStr, lockTTL)
 		if old != lockTS {
 			// someone else took over already
 			return nil
 		}
 	}
 
+	// TS does `await func()` with no try/finally — a thrown error propagates
+	// before the lock-release / done-marker code runs, so neither happens.
 	if err := fn(); err != nil {
-		// On error, release lock anyway and propagate.
-		if release {
-			s.cache.Del(key)
-		}
 		return err
 	}
 
@@ -70,7 +73,7 @@ func (s *Service) Once(key string, fn func() error, timeout time.Duration, relea
 		s.cache.Del(key)
 	}
 	if !repeat {
-		s.cache.Set(doneKey, "1", 0)
+		s.cache.Set(doneKey, "1", lockTTL)
 	}
 	return nil
 }

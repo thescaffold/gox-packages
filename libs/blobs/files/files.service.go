@@ -89,8 +89,10 @@ func (s *FilesService) Upload(input, parentID string, tags []string) (bool, stri
 	}
 
 	totalChunks, err := streamFileChunks(input, func(chunk string, index int) error {
-		_, batchErr := s.batch([]Page{{FileID: created.ID, Index: index, Raw: chunk}})
-		return batchErr
+		// jsx-blobs upload() fires batch() without inspecting its result —
+		// a failed chunk POST does not abort the stream. Mirror that here.
+		_, _ = s.batch([]Page{{FileID: created.ID, Index: index, Raw: chunk}})
+		return nil
 	})
 	if err != nil || totalChunks < 1 {
 		return false, "Failed to upload file chunks"
@@ -114,31 +116,35 @@ func (s *FilesService) Upload(input, parentID string, tags []string) (bool, stri
 	return true, verified.URL
 }
 
-// Download returns the full URL for the given file ID. Matches jsx-blobs download().
+// Download returns the full URL for the given file ID. Matches jsx-blobs
+// download(): plain `${config.server}/apps/blobs/download/<id>` concatenation.
 func (s *FilesService) Download(id string) string {
-	return fmt.Sprintf("%s/apps/blobs/download/%s", strings.TrimRight(s.cfg.Server, "/"), id)
+	return fmt.Sprintf("%s/apps/blobs/download/%s", s.cfg.Server, id)
 }
 
 // init posts file metadata and returns the server's File response (with id).
 func (s *FilesService) init(file File) (*File, error) {
-	url := fmt.Sprintf("%s/apps/blobs/upload/init", strings.TrimRight(s.cfg.Server, "/"))
+	url := fmt.Sprintf("%s/apps/blobs/upload/init", s.cfg.Server)
 	return s.postFile(url, file)
 }
 
 // batch posts one or more chunked pages.
 func (s *FilesService) batch(pages []Page) (any, error) {
-	url := fmt.Sprintf("%s/apps/blobs/upload/batch", strings.TrimRight(s.cfg.Server, "/"))
+	url := fmt.Sprintf("%s/apps/blobs/upload/batch", s.cfg.Server)
 	body := map[string]any{"pages": pages}
 	return s.postEnvelope(url, body)
 }
 
 // verify finalizes the upload and returns the File with url + pagesCount.
 func (s *FilesService) verify(file File) (*File, error) {
-	url := fmt.Sprintf("%s/apps/blobs/upload/verify", strings.TrimRight(s.cfg.Server, "/"))
+	url := fmt.Sprintf("%s/apps/blobs/upload/verify", s.cfg.Server)
 	return s.postFile(url, file)
 }
 
-// postFile posts a File and decodes the response body's `data` into a File.
+// postFile posts a File and decodes the response body into a File.
+// jsx-blobs init()/verify() return the raw HTTP body (axios `response.data`)
+// and upload() reads `.id` / `.url` / `.pagesCount` off it directly — there is
+// no `data` envelope unwrap, so the body itself is the File.
 func (s *FilesService) postFile(url string, file File) (*File, error) {
 	data, err := s.postEnvelope(url, file)
 	if err != nil {
@@ -158,9 +164,9 @@ func (s *FilesService) postFile(url string, file File) (*File, error) {
 	return out, nil
 }
 
-// postEnvelope wraps the http.Client POST + bearer auth + envelope unwrap.
-// Returns the `data` field of the response envelope, mirroring TS post() callers
-// that return `response?.data`.
+// postEnvelope wraps the http.Client POST + bearer auth and returns the raw
+// HTTP response body. Mirrors jsx-blobs post() callers which return `response`
+// (the axios body) directly, without unwrapping a `data` field.
 func (s *FilesService) postEnvelope(url string, body any) (any, error) {
 	headers := map[string]string{
 		"authorization": "bearer " + s.cfg.Credential,
@@ -169,10 +175,6 @@ func (s *FilesService) postEnvelope(url string, body any) (any, error) {
 	ok, status, statusText, _, resp := s.client.Request("POST", url, body, nil, headers, 0)
 	if !ok {
 		return nil, fmt.Errorf("blobs: %d %s", status, statusText)
-	}
-	// Envelope shape: { status, title, message, data, meta, raw, headers }
-	if env, isMap := resp.(map[string]any); isMap {
-		return env["data"], nil
 	}
 	return resp, nil
 }

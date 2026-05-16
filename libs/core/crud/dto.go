@@ -34,6 +34,17 @@ type UpdateDto[U any] struct {
 	Ctx  ntxctx.NTXContext `context:"ntx"`
 }
 
+// UpdatePutDto[C] carries the path :id param plus a merged JSON body of the
+// CREATE shape. PUT /:id replaces the row, mirroring TS updatePut() which
+// receives a CreateDto plus :id. The :id is required to scope the update to
+// a single row — without it, gox previously updated every row via
+// "id IS NOT NULL". Phase 1 closes that gap.
+type UpdatePutDto[C any] struct {
+	ID   string            `param:"id"`
+	Body C                 `json:",merge"`
+	Ctx  ntxctx.NTXContext `context:"ntx"`
+}
+
 // UpsertDto[C] is like CreateDto with an additional ?update= query flag.
 type UpsertDto[C any] struct {
 	Body   C                 `json:",merge"`

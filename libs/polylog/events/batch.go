@@ -17,7 +17,7 @@ const batchLimit = 25
 type BatchConfig struct {
 	// Interval is the flush tick duration. Default: 5 seconds.
 	Interval time.Duration
-	// Backoff is the sleep duration after a failed flush. Default: 1 second.
+	// Backoff is the sleep duration after a failed flush. Default: 30 seconds.
 	Backoff time.Duration
 	// Limit is the maximum number of consecutive retries before the flusher stops. Default: 3.
 	Limit int
@@ -48,7 +48,8 @@ func NewFlusher(cfg FlusherConfig, queue *Queue, client *corehttp.Client) *Flush
 		cfg.Batch.Interval = 5 * time.Second
 	}
 	if cfg.Batch.Backoff <= 0 {
-		cfg.Batch.Backoff = time.Second
+		// jsx-polylog default config: backoff = 30 * 1000 ms.
+		cfg.Batch.Backoff = 30 * time.Second
 	}
 	if cfg.Batch.Limit <= 0 {
 		cfg.Batch.Limit = 3

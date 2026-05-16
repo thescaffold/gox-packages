@@ -4,23 +4,31 @@ package utils
 type KeyValue = map[string]any
 
 // EntityActionType enumerates CRUD operations emitted as events.
+// Mirrors TS EntityActionType (common.util.ts) exactly, including the
+// granular read_one / read_many read actions.
 type EntityActionType string
 
 const (
-	ActionCreate EntityActionType = "create"
-	ActionRead   EntityActionType = "read"
-	ActionUpdate EntityActionType = "update"
-	ActionDelete EntityActionType = "delete"
+	ActionCreate   EntityActionType = "create"
+	ActionRead     EntityActionType = "read"
+	ActionReadOne  EntityActionType = "read_one"
+	ActionReadMany EntityActionType = "read_many"
+	ActionUpdate   EntityActionType = "update"
+	ActionDelete   EntityActionType = "delete"
 )
 
 // DefaultRoleTypeName holds the platform default role identifiers.
+// Mirrors TS DefaultRoleTypeName (common.util.ts): global_admin / global_member
+// are platform-wide roles, admin / member are workspace-scoped, guest is the
+// fallback.
 type DefaultRoleTypeName string
 
 const (
-	RoleSuperAdmin DefaultRoleTypeName = "super-admin"
-	RoleAdmin      DefaultRoleTypeName = "admin"
-	RoleUser       DefaultRoleTypeName = "user"
-	RoleGuest      DefaultRoleTypeName = "guest"
+	RoleGlobalAdmin  DefaultRoleTypeName = "global_admin"
+	RoleGlobalMember DefaultRoleTypeName = "global_member"
+	RoleAdmin        DefaultRoleTypeName = "admin"  // workspace
+	RoleMember       DefaultRoleTypeName = "member" // workspace
+	RoleGuest        DefaultRoleTypeName = "guest"
 )
 
 // PermissionScopeType restricts which records a permission applies to.

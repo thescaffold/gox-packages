@@ -38,8 +38,8 @@ func (s *CoreModuleSuite) TestExports_MatchDeclarations() {
 
 func (s *CoreModuleSuite) TestDeclarations_ContainsExpectedCount() {
 	m := module.New(module.CoreConfig{HMACKey: "key"})
-	// 16 declarations total: bus, tracker, httpClient, ws, ctx middleware,
-	// error filter, image, cache, sync, batch, marker, otp, platform, text,
-	// throttler, uaparser.
-	s.T.Expect(len(m.Declarations())).ToEqual(16)
+	// 18 declarations total: bus, tracker, httpClient, ws, ctx middleware,
+	// error filter, image, cache, sync, batch, marker, media, lang, otp,
+	// platform, text, throttler, uaparser.
+	s.T.Expect(len(m.Declarations())).ToEqual(18)
 }

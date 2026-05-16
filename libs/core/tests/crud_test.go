@@ -128,15 +128,17 @@ func (s *CrudSuite) TestQueriesMiddleware_SetsContext() {
 
 // ── Create ─────────────────────────────────────────────────────────────────────
 
-func (s *CrudSuite) TestCreate_Returns201() {
+func (s *CrudSuite) TestCreate_Returns200() {
+	// TS create() returns success() → HTTP 200, not 201.
 	r, entity := newItemResource(crud.Config[Item, Item, Item]{Name: "Item"})
 	out := r.Create(&crud.CreateDto[Item]{Body: Item{Name: "Alpha"}})
-	s.T.Expect(out.Code()).ToEqual(http.StatusCreated)
+	s.T.Expect(out.Code()).ToEqual(http.StatusOK)
 	s.T.Expect(envelope(out).Status).ToEqual("success")
 	s.T.Expect(entity.insertCalled).ToEqual(true)
 }
 
-func (s *CrudSuite) TestCreate_UniqueConflict_Returns409() {
+func (s *CrudSuite) TestCreate_UniqueConflict_Returns400() {
+	// TS create() raises error() with no status arg → defaults to BAD_REQUEST.
 	entity := &mockEntity[Item]{existsResult: true}
 	r := &crud.CrudResource[Item, Item, Item]{}
 	r.Hydrate(entity, crud.Config[Item, Item, Item]{
@@ -146,7 +148,7 @@ func (s *CrudSuite) TestCreate_UniqueConflict_Returns409() {
 		},
 	})
 	out := r.Create(&crud.CreateDto[Item]{Body: Item{Name: "Alpha"}})
-	s.T.Expect(out.Code()).ToEqual(http.StatusConflict)
+	s.T.Expect(out.Code()).ToEqual(http.StatusBadRequest)
 	s.T.Expect(envelope(out).Status).ToEqual("error")
 }
 
@@ -224,10 +226,11 @@ func (s *CrudSuite) TestUpdate_Found_Returns200() {
 	s.T.Expect(entity.updateCalled).ToEqual(true)
 }
 
-func (s *CrudSuite) TestUpdate_NotFound_Returns404() {
+func (s *CrudSuite) TestUpdate_NotFound_Returns400() {
+	// TS updatePatch() raises error() with no status arg → BAD_REQUEST, not 404.
 	r, _ := newItemResource(crud.Config[Item, Item, Item]{Name: "Item"})
 	out := r.Update(&crud.UpdateDto[Item]{ID: "missing", Body: Item{Name: "B"}})
-	s.T.Expect(out.Code()).ToEqual(http.StatusNotFound)
+	s.T.Expect(out.Code()).ToEqual(http.StatusBadRequest)
 }
 
 // ── Delete ─────────────────────────────────────────────────────────────────────
@@ -256,7 +259,8 @@ func (s *CrudSuite) TestMetrics_ReturnsCount() {
 	env := envelope(out)
 	data, ok := env.Data.(map[string]any)
 	s.T.Expect(ok).ToEqual(true)
-	s.T.Expect(data["count"]).ToEqual(int64(3))
+	// TS metrics() returns data { entities: <count> }.
+	s.T.Expect(data["entities"]).ToEqual(int64(3))
 }
 
 // ── FindByIds ──────────────────────────────────────────────────────────────────
@@ -316,10 +320,11 @@ func (s *CrudSuite) TestFindRelatives_NotFound_Returns404() {
 
 // ── CreateIgnoreDuplicate ──────────────────────────────────────────────────────
 
-func (s *CrudSuite) TestCreateIgnoreDuplicate_Returns201() {
+func (s *CrudSuite) TestCreateIgnoreDuplicate_Returns200() {
+	// TS createIgnoreDuplicate() returns success() → HTTP 200, not 201.
 	r, entity := newItemResource(crud.Config[Item, Item, Item]{Name: "Item"})
 	out := r.CreateIgnoreDuplicate(&crud.CreateDto[Item]{Body: Item{Name: "Beta"}})
-	s.T.Expect(out.Code()).ToEqual(http.StatusCreated)
+	s.T.Expect(out.Code()).ToEqual(http.StatusOK)
 	s.T.Expect(entity.insertCalled).ToEqual(true)
 }
 

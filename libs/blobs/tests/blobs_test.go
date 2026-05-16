@@ -42,12 +42,15 @@ func newScaffoldRecorder() *scaffoldRecorder {
 		}
 		w.Header().Set("Content-Type", "application/json")
 
+		// jsx-blobs init()/batch()/verify() read the raw HTTP body directly
+		// (no `data` envelope unwrap), so the server replies with the File /
+		// result object at the top level.
 		switch req.URL.Path {
 		case "/apps/blobs/upload/init":
 			_ = json.NewDecoder(req.Body).Decode(&r.initBody)
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"status": "success",
-				"data":   map[string]any{"id": "file-123"},
+				"id":     "file-123",
 			})
 		case "/apps/blobs/upload/batch":
 			var body struct {
@@ -61,18 +64,16 @@ func newScaffoldRecorder() *scaffoldRecorder {
 				}
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{
-				"status": "success",
-				"data":   map[string]any{"received": len(body.Pages)},
+				"status":   "success",
+				"received": len(body.Pages),
 			})
 		case "/apps/blobs/upload/verify":
 			_ = json.NewDecoder(req.Body).Decode(&r.verifyBody)
 			_ = json.NewEncoder(w).Encode(map[string]any{
-				"status": "success",
-				"data": map[string]any{
-					"id":         "file-123",
-					"url":        r.URL + "/storage/file-123",
-					"pagesCount": r.chunkCount,
-				},
+				"status":     "success",
+				"id":         "file-123",
+				"url":        r.URL + "/storage/file-123",
+				"pagesCount": r.chunkCount,
 			})
 		default:
 			http.NotFound(w, req)
@@ -128,12 +129,15 @@ func (s *BlobsSuite) TestDownload_ReturnsServerURL() {
 	s.T.Expect(url).ToEqual("http://example.test/apps/blobs/download/abc")
 }
 
-func (s *BlobsSuite) TestDownload_TrimsTrailingSlash() {
+// jsx-blobs download() concatenates `${config.server}/apps/blobs/download/<id>`
+// with no trailing-slash trimming — a server URL with a trailing slash yields
+// a doubled slash, exactly as in jsx.
+func (s *BlobsSuite) TestDownload_NoTrailingSlashTrim() {
 	svc := files.NewFilesService(files.Config{
 		Server: "http://example.test/", Credential: "tok", SourceId: "src",
 	}, corehttp.New(""))
 	url := svc.Download("abc")
-	s.T.Expect(url).ToEqual("http://example.test/apps/blobs/download/abc")
+	s.T.Expect(url).ToEqual("http://example.test//apps/blobs/download/abc")
 }
 
 // ── FilesService.Upload (drives init→batch→verify) ────────────────────────────

@@ -18,21 +18,23 @@ var (
 )
 
 // IsEmail returns true if v is a valid email address.
+// Mirrors TS isEmailAddress() (class-validator isEmail) — the value is not
+// trimmed before validation.
 func IsEmail(v string) bool {
-	return emailRe.MatchString(strings.TrimSpace(v))
+	return emailRe.MatchString(v)
 }
 
 // IsPhone returns true if v is a valid Nigerian phone number.
+// Mirrors TS isPhoneNumber() — no trimming is applied to the input.
 func IsPhone(v string) bool {
-	return phoneRe.MatchString(strings.TrimSpace(v))
+	return phoneRe.MatchString(v)
 }
 
 // IsNumeric returns true if v is a numeric string (integer or decimal).
+// Mirrors TS isNumeric(): `!isNullOrUndefined(str) && /^-?\d+(\.\d+)?$/.test(str)`
+// — the value is matched as-is, with no surrounding-whitespace tolerance.
 func IsNumeric(v string) bool {
-	if v == "" {
-		return false
-	}
-	return numRe.MatchString(strings.TrimSpace(v))
+	return numRe.MatchString(v)
 }
 
 // IsNullOrUndefined returns true if v is nil.

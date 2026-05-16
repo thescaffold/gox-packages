@@ -10,7 +10,9 @@ const (
 	FormatFullDateTime = "2006-01-02 03:04:05"
 	FormatTime         = "03:04"
 	FormatFullTime     = "03:04:05"
-	FormatPretty       = "Mon, 02 Jan 2006, 03:04 PM"
+	// FormatPretty mirrors TS FORMAT.PRETTY = 'ddd, DD MMM YYYY, hh:ss A'
+	// (note: the TS token is hh:ss — 12-hour:seconds, not hh:mm).
+	FormatPretty = "Mon, 02 Jan 2006, 03:05 PM"
 )
 
 // Now returns the current UTC time.

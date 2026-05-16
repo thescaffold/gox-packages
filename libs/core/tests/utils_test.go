@@ -99,6 +99,11 @@ func (s *UtilsSuite) TestTitleCase() {
 	s.T.Expect(utils.TitleCase("hello world")).ToEqual("Hello World")
 }
 
+func (s *UtilsSuite) TestTitleCase_LowercasesRestAndKeepsSpacing() {
+	// TS titleCase lower-cases non-word-start chars and preserves spacing.
+	s.T.Expect(utils.TitleCase("HELLO  WORLD")).ToEqual("Hello  World")
+}
+
 func (s *UtilsSuite) TestPrettify() {
 	s.T.Expect(utils.Prettify("hello_world")).ToEqual("hello world")
 }
@@ -108,12 +113,18 @@ func (s *UtilsSuite) TestTrimString_RemovesSlashes() {
 }
 
 func (s *UtilsSuite) TestMaskEmail() {
-	s.T.Expect(utils.MaskEmail("john.doe@example.com")).ToEqual("joh***oe@example.com")
+	// TS maskEmail: slice(0,3) + '*'.repeat(len-2) + slice(-2). "john.doe" → 6 stars.
+	s.T.Expect(utils.MaskEmail("john.doe@example.com")).ToEqual("joh******oe@example.com")
 }
 
 func (s *UtilsSuite) TestMaskEmail_Short() {
-	// ≤5 chars in username — no masking
-	s.T.Expect(utils.MaskEmail("ab@x.com")).ToEqual("ab@x.com")
+	// Short usernames: visible start/end overlap, zero stars — matches TS.
+	s.T.Expect(utils.MaskEmail("ab@x.com")).ToEqual("abab@x.com")
+}
+
+func (s *UtilsSuite) TestMask_FixedSevenStars() {
+	s.T.Expect(utils.Mask("anything")).ToEqual("*******")
+	s.T.Expect(utils.Mask("")).ToEqual("")
 }
 
 // --- time ---
@@ -136,23 +147,41 @@ func (s *UtilsSuite) TestFormat_Date() {
 // --- money ---
 
 func (s *UtilsSuite) TestToMajor_Basic() {
-	s.T.Expect(utils.ToMajor(1050, 2)).ToEqual("10.50")
+	v, err := utils.ToMajor(1050)
+	s.T.Expect(err).ToBeNil()
+	s.T.Expect(v).ToEqual("10.50")
 }
 
 func (s *UtilsSuite) TestToMajor_Zero() {
-	s.T.Expect(utils.ToMajor(0, 2)).ToEqual("0.00")
+	v, err := utils.ToMajor(0)
+	s.T.Expect(err).ToBeNil()
+	s.T.Expect(v).ToEqual("0.00")
+}
+
+func (s *UtilsSuite) TestToMajor_PadsShortValue() {
+	// TS toMajor pads to >=3 digits before slicing: 5 → "0.05".
+	v, err := utils.ToMajor(5)
+	s.T.Expect(err).ToBeNil()
+	s.T.Expect(v).ToEqual("0.05")
 }
 
 func (s *UtilsSuite) TestToMinor_Basic() {
-	v, err := utils.ToMinor("10.50", 2)
+	v, err := utils.ToMinor("10.50")
 	s.T.Expect(err).ToBeNil()
 	s.T.Expect(v).ToEqual(int64(1050))
 }
 
 func (s *UtilsSuite) TestToMinor_NoDecimal() {
-	v, err := utils.ToMinor("10", 2)
+	v, err := utils.ToMinor("10")
 	s.T.Expect(err).ToBeNil()
 	s.T.Expect(v).ToEqual(int64(1000))
+}
+
+func (s *UtilsSuite) TestToMinor_SingleFractionDigit() {
+	// TS pads the fraction with "00" then truncates to 2: "10.5" → 1050.
+	v, err := utils.ToMinor("10.5")
+	s.T.Expect(err).ToBeNil()
+	s.T.Expect(v).ToEqual(int64(1050))
 }
 
 func (s *UtilsSuite) TestToInt_Basic() {

@@ -68,8 +68,26 @@ func Register(cfg PolylogConfig) *PolylogModule {
 	}, queue, corehttp.New(""))
 	flusher.Run()
 
+	// Register the SDK as a polylog source — mirrors jsx-polylog init()
+	// (jsx-packages/libs/polylog/src/common/init/index.ts:31-42).
+	queue.Push(events.Item{
+		Category: events.CategoryEvent,
+		Type:     "apps.polylog.source.register",
+		Payload: map[string]any{
+			"id":       sdkSourceID,
+			"category": string(events.CategoryEvent),
+			"key":      "sdk",
+			"typeKey":  "javascript",
+			"name":     "Polylog SDK Javascript",
+			"desc":     nil,
+		},
+	})
+
 	return &PolylogModule{cfg: cfg, queue: queue, svc: svc, flusher: flusher}
 }
+
+// sdkSourceID is the fixed source id jsx-polylog registers itself under.
+const sdkSourceID = "4b0765da-6df0-4eaa-bf16-e0cb48a3c47c"
 
 func (cfg PolylogConfig) validate() error {
 	if cfg.Server == "" {
@@ -102,6 +120,6 @@ var Defaults = struct {
 	BatchLimit    int
 }{
 	BatchInterval: 5 * time.Second,
-	BatchBackoff:  time.Second,
+	BatchBackoff:  30 * time.Second,
 	BatchLimit:    3,
 }

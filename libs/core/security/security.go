@@ -1,6 +1,7 @@
 package security
 
 import (
+	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/hmac"
@@ -16,7 +17,6 @@ import (
 	"fmt"
 	"hash"
 	"io"
-	"sort"
 	"strings"
 
 	"golang.org/x/crypto/bcrypt"
@@ -179,25 +179,33 @@ func pkcs7Unpad(b []byte) ([]byte, error) {
 	return b[:len(b)-pad], nil
 }
 
+// sortedJSON mirrors TS `JSON.stringify(sortObject(payload))`. Go's json.Marshal
+// already emits map keys in sorted order, so the round-trip through map[string]any
+// yields the sort. Two deviations from Go's default must be corrected to match
+// JavaScript's JSON.stringify: HTML characters (<, >, &) must NOT be escaped, and
+// there must be no trailing newline (which json.Encoder appends).
 func sortedJSON(v any) ([]byte, error) {
-	b, err := json.Marshal(v)
+	b, err := marshalNoEscape(v)
 	if err != nil {
 		return nil, err
 	}
-	// Unmarshal into ordered map then re-marshal with sorted keys
+	// Unmarshal into a map then re-marshal so keys come out sorted.
 	var m map[string]any
 	if err = json.Unmarshal(b, &m); err != nil {
 		// not an object — marshal as-is
 		return b, nil
 	}
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
+	return marshalNoEscape(m)
+}
+
+// marshalNoEscape JSON-marshals v without HTML escaping and without the trailing
+// newline json.Encoder adds, matching JavaScript's JSON.stringify output.
+func marshalNoEscape(v any) ([]byte, error) {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(v); err != nil {
+		return nil, err
 	}
-	sort.Strings(keys)
-	out := make(map[string]any, len(m))
-	for _, k := range keys {
-		out[k] = m[k]
-	}
-	return json.Marshal(out)
+	return bytes.TrimRight(buf.Bytes(), "\n"), nil
 }

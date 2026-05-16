@@ -21,29 +21,37 @@ func New(queue *Queue) *EventsService {
 
 // Identify enqueues a user-identification event.
 func (s *EventsService) Identify(id string, attributes any, options *IdentifyOptions) {
+	payload := map[string]any{
+		"type":       "identify",
+		"id":         id,
+		"attributes": coerceAttrs(attributes),
+	}
+	// jsx-polylog includes `options` in the payload; JSON.stringify drops it
+	// when undefined. Only add the key when a value was actually supplied.
+	if options != nil {
+		payload["options"] = options
+	}
 	s.queue.Push(Item{
 		Category: CategoryEvent,
 		Type:     "user.identify",
-		Payload: map[string]any{
-			"type":       "identify",
-			"id":         id,
-			"attributes": coerceAttrs(attributes),
-			"options":    options,
-		},
+		Payload:  payload,
 	})
 }
 
 // Track enqueues a named user-action event.
 func (s *EventsService) Track(id, eventType string, attributes any, options *TrackOptions) {
+	payload := map[string]any{
+		"type":       "track",
+		"id":         id,
+		"attributes": coerceAttrs(attributes),
+	}
+	if options != nil {
+		payload["options"] = options
+	}
 	s.queue.Push(Item{
 		Category: CategoryEvent,
 		Type:     eventType,
-		Payload: map[string]any{
-			"type":       "track",
-			"id":         id,
-			"attributes": coerceAttrs(attributes),
-			"options":    options,
-		},
+		Payload:  payload,
 	})
 }
 

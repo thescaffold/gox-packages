@@ -121,11 +121,9 @@ func (m *MemoryBackend) Incr(key string) int64 {
 		}
 	}
 	cur++
-	prev, _ := m.store[key]
+	// Preserve any existing expiry on the entry while updating its value.
+	prev := m.store[key]
 	prev.value = formatInt(cur)
-	if prev.expiresAt.IsZero() && false {
-		// preserve missing expiry
-	}
 	m.store[key] = prev
 	return cur
 }

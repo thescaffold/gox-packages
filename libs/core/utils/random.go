@@ -1,6 +1,8 @@
 package utils
 
 import (
+	cryptorand "crypto/rand"
+	"encoding/hex"
 	"math/rand/v2"
 	"strings"
 )
@@ -16,9 +18,20 @@ func RandomDigits(n int) string {
 	return randomFrom(numChars, n)
 }
 
-// Random returns a random alphanumeric string of length n.
+// Random returns a random hex string of length n. Mirrors TS common.util.ts
+// random(): randomBytes(n).toString('hex').substring(0, n) — n bytes of crypto
+// randomness, hex-encoded, then sliced to n hex characters.
 func Random(n int) string {
-	return randomFrom(alphaNumChars, n)
+	if n <= 0 {
+		return ""
+	}
+	b := make([]byte, n)
+	if _, err := cryptorand.Read(b); err != nil {
+		for i := range b {
+			b[i] = byte(rand.IntN(256))
+		}
+	}
+	return hex.EncodeToString(b)[:n]
 }
 
 // RandomUsername returns a random username like "A-123-456-789".

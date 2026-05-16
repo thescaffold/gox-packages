@@ -5,7 +5,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/cbroglie/mustache"
 	"github.com/thescaffold/gox-packages/libs/core/utils"
@@ -69,14 +68,15 @@ func xAlphanum(text string) string {
 	return utils.Random(n)
 }
 
-// xTime formats a time string using the "02 Jan 2006" layout.
+// xTime formats a time string using FORMAT.PRETTY, matching TS xTime():
+// time.utc().from(input).format(FORMAT.PRETTY).
 func xTime(text string) string {
 	input := strings.TrimSpace(text)
-	t, err := time.Parse(time.RFC3339, input)
-	if err != nil {
+	t := utils.UTC().From(input)
+	if t.IsZero() {
 		return input
 	}
-	return t.UTC().Format("02 Jan 2006")
+	return t.Format(utils.FormatPretty)
 }
 
 // xEnvValue returns ASCII-only text with double quotes escaped.
@@ -105,12 +105,16 @@ func xFromBase64(text string) string {
 
 // xMajor converts a minor-unit integer string to a major-unit decimal string.
 func xMajor(text string) string {
-	return utils.ToMajor(parseInt64(text), 2)
+	v, err := utils.ToMajor(parseInt64(text))
+	if err != nil {
+		return text
+	}
+	return v
 }
 
 // xMinor converts a major-unit decimal string to a minor-unit integer string.
 func xMinor(text string) string {
-	v, err := utils.ToMinor(strings.TrimSpace(text), 2)
+	v, err := utils.ToMinor(strings.TrimSpace(text))
 	if err != nil {
 		return text
 	}

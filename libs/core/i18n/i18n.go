@@ -90,8 +90,12 @@ func Translate(path string, loader Loader, preference map[string]any, data map[s
 	}
 	yamlPath := "translations/" + locale + "/ntx" + group + "/" + serviceName + ".yaml"
 
-	yamlStr, err := loader.Load(yamlPath)
-	if err != nil && locale != "en" {
+	yamlStr, _ := loader.Load(yamlPath)
+	// TS translate() falls back to the English file whenever the located file
+	// is empty/missing (`if (!yaml) yaml = mediaService.get(en-path)`), not only
+	// on a hard loader error — a media-backed loader returns ("", nil) for an
+	// un-loaded path, so the empty-string check is what drives the fallback.
+	if yamlStr == "" {
 		fallback := "translations/en/ntx" + group + "/" + serviceName + ".yaml"
 		yamlStr, _ = loader.Load(fallback)
 	}

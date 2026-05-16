@@ -58,19 +58,12 @@ func (s *Service) Get(path string) string {
 	return s.store[path]
 }
 
-// LoadAndGet ensures path is cached, then returns the body.
-func (s *Service) LoadAndGet(path string) (string, error) {
-	if v := s.Get(path); v != "" {
-		return v, nil
-	}
-	body, err := s.fetch(path)
-	if err != nil {
-		return "", err
-	}
-	s.mu.Lock()
-	s.store[path] = body
-	s.mu.Unlock()
-	return body, nil
+// LoadAndGet ensures path is cached, then returns the body. Mirrors TS
+// loadAndGet(): it calls Load (which swallows fetch errors) then Get, so a
+// failed fetch yields "" rather than an error.
+func (s *Service) LoadAndGet(path string) string {
+	_ = s.Load([]string{path})
+	return s.Get(path)
 }
 
 func (s *Service) fetch(path string) (string, error) {

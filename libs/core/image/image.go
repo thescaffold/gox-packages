@@ -3,144 +3,116 @@ package image
 import (
 	"fmt"
 	"strings"
+
+	"github.com/thescaffold/gox-packages/libs/core/utils"
 )
 
-// Variant selects the SVG generation style.
+// Variant selects the SVG generation style. Mirrors TS DynamicImageVariantType
+// (common.util.ts): only "pixel" and "shapes" exist — there is no gradient or
+// solid variant in the TS ImageService.
 type Variant string
 
 const (
-	VariantPixel    Variant = "pixel"
-	VariantGradient Variant = "gradient"
-	VariantSolid    Variant = "solid"
-	VariantShapes   Variant = "shapes"
+	VariantPixel  Variant = "pixel"
+	VariantShapes Variant = "shapes"
 )
 
-// Options configures SVG generation.
+// DefaultColors is the palette used by TS ImageService.new() when no colors are
+// supplied.
+var DefaultColors = []string{"#92A1C6", "#146A7C", "#F0AB3D", "#C271B4", "#C20D90"}
+
+// Options configures SVG generation. Mirrors the argument list of TS
+// ImageService.new(name, variant, colors, size, isSquare).
 type Options struct {
-	Width   int
-	Height  int
-	Text    string
-	Colors  []string // one for solid/pixel, two for gradient (start, end)
-	Variant Variant
-	// Name is the deterministic seed for Pixel/Shapes variants. When empty,
-	// it falls back to Text. Mirrors the TS ImageService.new(name, ...).
+	// Name is the deterministic seed (hashCode) and the <title> contents.
 	Name string
-	// IsSquare, when false on Pixel/Shapes, rounds the mask corners.
+	// Variant is "pixel" (default) or "shapes".
+	Variant Variant
+	// Colors is the palette; defaults to DefaultColors when empty.
+	Colors []string
+	// Size sets the rendered width/height attributes (the coordinate space is
+	// always the 80x80 coreSize). Defaults to 80.
+	Size int
+	// IsSquare, when false, rounds the mask corners (rx = coreSize*2).
 	IsSquare bool
 }
 
-// Service generates SVG images.
+// coreSize is the fixed SVG coordinate space, matching the TS implementation.
+const coreSize = 80
+
+// Service generates deterministic SVG avatars. Stateless — mirrors the NestJS
+// ImageService.
 type Service struct{}
 
-// New returns an SVG []byte for the given options.
+// New returns the SVG bytes for the given options, mirroring TS
+// ImageService.new(). Unknown variants fall back to the pixel variant (the TS
+// `new()` default parameter value).
 func (s *Service) New(opts Options) []byte {
-	if opts.Width <= 0 {
-		opts.Width = 200
-	}
-	if opts.Height <= 0 {
-		opts.Height = 200
+	if opts.Size <= 0 {
+		opts.Size = coreSize
 	}
 	if len(opts.Colors) == 0 {
-		opts.Colors = []string{"#4f46e5", "#818cf8"}
+		opts.Colors = DefaultColors
 	}
 
 	switch opts.Variant {
-	case VariantPixel:
-		return pixelSVG(opts)
-	case VariantGradient:
-		return gradientSVG(opts)
 	case VariantShapes:
 		return shapesSVG(opts)
 	default:
-		return solidSVG(opts)
+		return pixelSVG(opts)
 	}
 }
 
-func solidSVG(o Options) []byte {
-	color := o.Colors[0]
-	svg := fmt.Sprintf(`<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="%d">
-  <rect width="%d" height="%d" fill="%s"/>
-  %s
-</svg>`, o.Width, o.Height, o.Width, o.Height, color, textElement(o))
-	return []byte(svg)
+// pixelRectCoords is the fixed (x, y) placement of the 64 pixel cells, in the
+// exact order the TS template literal emits them.
+var pixelRectCoords = [64][2]int{
+	{0, 0}, {20, 0}, {40, 0}, {60, 0}, {10, 0}, {30, 0}, {50, 0}, {70, 0},
+	{0, 10}, {0, 20}, {0, 30}, {0, 40}, {0, 50}, {0, 60}, {0, 70},
+	{20, 10}, {20, 20}, {20, 30}, {20, 40}, {20, 50}, {20, 60}, {20, 70},
+	{40, 10}, {40, 20}, {40, 30}, {40, 40}, {40, 50}, {40, 60}, {40, 70},
+	{60, 10}, {60, 20}, {60, 30}, {60, 40}, {60, 50}, {60, 60}, {60, 70},
+	{10, 10}, {10, 20}, {10, 30}, {10, 40}, {10, 50}, {10, 60}, {10, 70},
+	{30, 10}, {30, 20}, {30, 30}, {30, 40}, {30, 50}, {30, 60}, {30, 70},
+	{50, 10}, {50, 20}, {50, 30}, {50, 40}, {50, 50}, {50, 60}, {50, 70},
+	{70, 10}, {70, 20}, {70, 30}, {70, 40}, {70, 50}, {70, 60}, {70, 70},
 }
 
-func gradientSVG(o Options) []byte {
-	start := o.Colors[0]
-	end := start
-	if len(o.Colors) > 1 {
-		end = o.Colors[1]
-	}
-	svg := fmt.Sprintf(`<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="%d">
-  <defs>
-    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%%" stop-color="%s"/>
-      <stop offset="100%%" stop-color="%s"/>
-    </linearGradient>
-  </defs>
-  <rect width="%d" height="%d" fill="url(#g)"/>
-  %s
-</svg>`, o.Width, o.Height, start, end, o.Width, o.Height, textElement(o))
-	return []byte(svg)
-}
-
-// pixelSVG renders a blocky pixel-art grid using the provided colors.
+// pixelSVG renders the TS DynamicImageVariantType.Pixel variant: a fixed 8x8
+// grid of 10x10 cells, each colored by getRandomColor(numFromName % (i+1), ...).
 func pixelSVG(o Options) []byte {
-	const cols, rows = 8, 8
-	cellW := o.Width / cols
-	cellH := o.Height / rows
+	id := utils.UUID()
+	numFromName := hashCode(o.Name)
+	rng := len(o.Colors)
+
+	properties := make([]string, 64)
+	for i := 0; i < 64; i++ {
+		properties[i] = getRandomColor(numFromName%(i+1), o.Colors, rng)
+	}
 
 	var sb strings.Builder
-	fmt.Fprintf(&sb, `<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="%d">`, o.Width, o.Height)
-
-	colors := o.Colors
-	if len(colors) < 2 {
-		colors = append(colors, "#818cf8")
+	fmt.Fprintf(&sb,
+		`<svg viewBox="0 0 %d %d" fill="none" role="img" xmlns="http://www.w3.org/2000/svg" width="%d" height="%d">`,
+		coreSize, coreSize, o.Size, o.Size)
+	fmt.Fprintf(&sb, `<title>%s</title>`, o.Name)
+	fmt.Fprintf(&sb,
+		`<mask id="%s" maskUnits="userSpaceOnUse" x="0" y="0" width="%d" height="%d"><rect width="%d" height="%d" rx="%s" fill="#FFFFFF"/></mask>`,
+		id, coreSize, coreSize, coreSize, coreSize, maskRx(o.IsSquare))
+	fmt.Fprintf(&sb, `<g mask="url(#%s)">`, id)
+	for i, c := range pixelRectCoords {
+		fmt.Fprintf(&sb, `<rect x="%d" y="%d" width="10" height="10" fill="%s"/>`,
+			c[0], c[1], properties[i])
 	}
-
-	for r := 0; r < rows; r++ {
-		for c := 0; c < cols; c++ {
-			color := colors[(r+c)%len(colors)]
-			x := c * cellW
-			y := r * cellH
-			fmt.Fprintf(&sb, `<rect x="%d" y="%d" width="%d" height="%d" fill="%s"/>`,
-				x, y, cellW, cellH, color)
-		}
-	}
-
-	sb.WriteString(textElement(o))
-	sb.WriteString(`</svg>`)
+	sb.WriteString(`</g></svg>`)
 	return []byte(sb.String())
 }
 
-func textElement(o Options) string {
-	if o.Text == "" {
-		return ""
-	}
-	cx := o.Width / 2
-	cy := o.Height / 2
-	return fmt.Sprintf(
-		`<text x="%d" y="%d" font-family="sans-serif" font-size="16" fill="#ffffff" text-anchor="middle" dominant-baseline="central">%s</text>`,
-		cx, cy, o.Text,
-	)
-}
-
-// shapesSVG renders the TS DynamicImageVariantType.Shapes variant: rect + rect
-// (rotated) + circle + line, all positioned via deterministic hashCode-derived
-// transforms. Mirrors ntx-packages/libs/core/src/services/image.service.ts.
+// shapesSVG renders the TS DynamicImageVariantType.Shapes variant: a base rect,
+// a rotated rect, a circle and a line, all positioned via deterministic
+// hashCode-derived transforms.
 func shapesSVG(o Options) []byte {
-	const coreSize = 80
-	colors := o.Colors
-	if len(colors) == 0 {
-		colors = []string{"#92A1C6", "#146A7C", "#F0AB3D", "#C271B4", "#C20D90"}
-	}
-
-	name := o.Name
-	if name == "" {
-		name = o.Text
-	}
-	num := hashCode(name)
-	range_ := len(colors)
+	id := utils.UUID()
+	numFromName := hashCode(o.Name)
+	rng := len(o.Colors)
 
 	type prop struct {
 		Color      string
@@ -152,41 +124,27 @@ func shapesSVG(o Options) []byte {
 	props := make([]prop, 4)
 	for i := 0; i < 4; i++ {
 		props[i] = prop{
-			Color:      getRandomColor(num+i, colors, range_),
-			TranslateX: getUnit(num*(i+1), coreSize/2-(i+17), 1),
-			TranslateY: getUnit(num*(i+1), coreSize/2-(i+17), 2),
-			Rotate:     getUnit(num*(i+1), 360, 0),
-			IsSquare:   getBoolean(num, 2),
+			Color:      getRandomColor(numFromName+i, o.Colors, rng),
+			TranslateX: getUnit(numFromName*(i+1), coreSize/2-(i+17), 1),
+			TranslateY: getUnit(numFromName*(i+1), coreSize/2-(i+17), 2),
+			Rotate:     getUnit(numFromName*(i+1), 360, 0),
+			IsSquare:   getBoolean(numFromName, 2),
 		}
 	}
 
-	rxAttr := ""
-	if !o.IsSquare {
-		rxAttr = fmt.Sprintf(` rx="%d"`, coreSize*2)
-	}
-
-	id := fmt.Sprintf("mask-%d", num)
 	rect1Height := coreSize / 8
 	if props[1].IsSquare {
 		rect1Height = coreSize
 	}
 
-	width, height := o.Width, o.Height
-	if width == 0 {
-		width = 80
-	}
-	if height == 0 {
-		height = 80
-	}
-
 	var sb strings.Builder
 	fmt.Fprintf(&sb,
 		`<svg viewBox="0 0 %d %d" fill="none" role="img" xmlns="http://www.w3.org/2000/svg" width="%d" height="%d">`,
-		coreSize, coreSize, width, height)
-	fmt.Fprintf(&sb, `<title>%s</title>`, name)
+		coreSize, coreSize, o.Size, o.Size)
+	fmt.Fprintf(&sb, `<title>%s</title>`, o.Name)
 	fmt.Fprintf(&sb,
-		`<mask id="%s" maskUnits="userSpaceOnUse" x="0" y="0" width="%d" height="%d"><rect width="%d" height="%d"%s fill="#FFFFFF"/></mask>`,
-		id, coreSize, coreSize, coreSize, coreSize, rxAttr)
+		`<mask id="%s" maskUnits="userSpaceOnUse" x="0" y="0" width="%d" height="%d"><rect width="%d" height="%d" rx="%s" fill="#FFFFFF"/></mask>`,
+		id, coreSize, coreSize, coreSize, coreSize, maskRx(o.IsSquare))
 	fmt.Fprintf(&sb, `<g mask="url(#%s)">`, id)
 	fmt.Fprintf(&sb, `<rect width="%d" height="%d" fill="%s"/>`, coreSize, coreSize, props[0].Color)
 	fmt.Fprintf(&sb,
@@ -204,7 +162,18 @@ func shapesSVG(o Options) []byte {
 	return []byte(sb.String())
 }
 
-// hashCode mirrors the TS hashCode(): 32-bit shift-and-XOR hash, abs value.
+// maskRx mirrors the TS `rx="${isSquare ? '' : coreSize * 2}"` expression: an
+// empty attribute value when square, coreSize*2 otherwise.
+func maskRx(isSquare bool) string {
+	if isSquare {
+		return ""
+	}
+	return fmt.Sprintf("%d", coreSize*2)
+}
+
+// --- helpers (mirror ntx-packages/libs/core/src/utils/image.util.ts) ---
+
+// hashCode mirrors TS hashCode(): 32-bit shift-and-XOR hash, absolute value.
 func hashCode(name string) int {
 	var hash int32
 	for _, ch := range name {
@@ -216,7 +185,7 @@ func hashCode(name string) int {
 	return int(hash)
 }
 
-// getDigit returns the n-th decimal digit of number (0-indexed).
+// getDigit mirrors TS getDigit(): the n-th decimal digit of number (0-indexed).
 func getDigit(number, ntn int) int {
 	return (number / pow10(ntn)) % 10
 }
@@ -229,32 +198,28 @@ func pow10(n int) int {
 	return out
 }
 
-// getBoolean mirrors TS getBoolean: true when the n-th digit is even.
+// getBoolean mirrors TS getBoolean(): true when the n-th digit is even.
 func getBoolean(number, ntn int) bool {
 	return getDigit(number, ntn)%2 == 0
 }
 
-// getUnit mirrors TS getUnit: number % range, optionally negated when the
-// index-th digit of number is even.
-func getUnit(number, range_, index int) int {
-	if range_ <= 0 {
+// getUnit mirrors TS getUnit(): number % range, negated when index is truthy
+// (> 0) and the index-th digit of number is even.
+func getUnit(number, rangeV, index int) int {
+	if rangeV == 0 {
 		return 0
 	}
-	value := number % range_
+	value := number % rangeV
 	if index > 0 && getDigit(number, index)%2 == 0 {
 		return -value
 	}
 	return value
 }
 
-// getRandomColor mirrors TS getRandomColor: deterministic color pick by index.
-func getRandomColor(number int, colors []string, range_ int) string {
-	if range_ <= 0 || len(colors) == 0 {
-		return "#000000"
+// getRandomColor mirrors TS getRandomColor(): colors[number % range].
+func getRandomColor(number int, colors []string, rangeV int) string {
+	if rangeV <= 0 || len(colors) == 0 {
+		return ""
 	}
-	idx := number % range_
-	if idx < 0 {
-		idx = -idx
-	}
-	return colors[idx]
+	return colors[number%rangeV]
 }

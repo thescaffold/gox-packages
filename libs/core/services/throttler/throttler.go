@@ -36,6 +36,9 @@ func (s *Service) Throttle(id string, multiplier int) (bool, time.Duration) {
 	}
 	key := "app:user:throttle:" + id
 
+	// TS reads rCount + rTtl up front, then either seeds the counter (when
+	// absent) or increments it — always returning rTtl, including the
+	// not-found case where the backend's ttl for a missing key is used.
 	rTTL := s.cache.TTL(key)
 	current, has := s.cache.Get(key)
 	if has {
@@ -47,7 +50,7 @@ func (s *Service) Throttle(id string, multiplier int) (bool, time.Duration) {
 		return true, rTTL
 	}
 	s.cache.Set(key, "1", s.TTL)
-	return true, s.TTL
+	return true, rTTL
 }
 
 func atoi(s string) int {

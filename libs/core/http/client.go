@@ -49,7 +49,7 @@ func (c *Client) Internal(method, rawURL string, body, queries, headers any, ret
 		h["content-type"] = "application/json"
 	}
 
-	return c.request(method, rawURL, body, toStringMap(queries), h, retryCount)
+	return c.request(method, rawURL, body, toStringMap(queries), h, retryCount, false)
 }
 
 // External makes an unauthenticated outbound HTTP call.
@@ -59,23 +59,27 @@ func (c *Client) External(method, rawURL string, body, queries, headers any, ret
 	if _, ok := h["content-type"]; !ok {
 		h["content-type"] = "application/json"
 	}
-	return c.request(method, rawURL, body, toStringMap(queries), h, retryCount)
+	return c.request(method, rawURL, body, toStringMap(queries), h, retryCount, false)
 }
 
 // Request is the public no-auth entry point used by jsx-style HTTP wrappers
 // (blobs/flags/polylog) that supply their own bearer-token auth header.
 // Matches TS jsx-* request() shape: returns (success, status, statusText, errBody, data).
+// jsx request() uses axios `validateStatus: status < 500`, so any response
+// below 500 (including 4xx) is treated as success and its body returned.
 func (c *Client) Request(method, rawURL string, body, queries, headers any, retryCount int) (bool, int, string, any, any) {
 	h := toStringMap(headers)
 	if _, ok := h["content-type"]; !ok {
 		h["content-type"] = "application/json"
 	}
-	return c.request(method, rawURL, body, toStringMap(queries), h, retryCount)
+	return c.request(method, rawURL, body, toStringMap(queries), h, retryCount, true)
 }
 
-// request is the shared retry loop. On non-2xx it retries retryCount more times
-// with 100 ms delay, matching TS retry({ delay: 100, count: retryCount }).
-func (c *Client) request(method, rawURL string, body any, queries, headers map[string]string, retryCount int) (bool, int, string, any, any) {
+// request is the shared retry loop. On a non-success response it retries
+// retryCount more times with 100 ms delay, matching TS retry({ delay: 100,
+// count: retryCount }). When jsxMode is true, success is "status < 500"
+// (mirroring jsx-* axios validateStatus); otherwise it is "2xx".
+func (c *Client) request(method, rawURL string, body any, queries, headers map[string]string, retryCount int, jsxMode bool) (bool, int, string, any, any) {
 	method = strings.ToUpper(method)
 
 	if len(queries) > 0 {
@@ -112,7 +116,7 @@ func (c *Client) request(method, rawURL string, body any, queries, headers map[s
 			}
 		}
 
-		success, statusCode, statusText, errBody, respData = c.do(method, rawURL, bodyReader, headers)
+		success, statusCode, statusText, errBody, respData = c.do(method, rawURL, bodyReader, headers, jsxMode)
 		if success {
 			return success, statusCode, statusText, errBody, respData
 		}
@@ -120,7 +124,7 @@ func (c *Client) request(method, rawURL string, body any, queries, headers map[s
 	return success, statusCode, statusText, errBody, respData
 }
 
-func (c *Client) do(method, rawURL string, body io.Reader, headers map[string]string) (bool, int, string, any, any) {
+func (c *Client) do(method, rawURL string, body io.Reader, headers map[string]string, jsxMode bool) (bool, int, string, any, any) {
 	req, err := http.NewRequest(method, rawURL, body)
 	if err != nil {
 		return false, 503, "Service is Down", err.Error(), nil
@@ -143,6 +147,10 @@ func (c *Client) do(method, rawURL string, body io.Reader, headers map[string]st
 	}
 
 	ok := resp.StatusCode >= 200 && resp.StatusCode <= 299
+	if jsxMode {
+		// jsx-* axios validateStatus: status < 500 is a non-throwing response.
+		ok = resp.StatusCode < 500
+	}
 	return ok, resp.StatusCode, resp.Status, nil, data
 }
 
