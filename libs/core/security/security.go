@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"hash"
 	"io"
+	"sort"
 	"strings"
 
 	"golang.org/x/crypto/bcrypt"
@@ -179,23 +180,50 @@ func pkcs7Unpad(b []byte) ([]byte, error) {
 	return b[:len(b)-pad], nil
 }
 
-// sortedJSON mirrors TS `JSON.stringify(sortObject(payload))`. Go's json.Marshal
-// already emits map keys in sorted order, so the round-trip through map[string]any
-// yields the sort. Two deviations from Go's default must be corrected to match
-// JavaScript's JSON.stringify: HTML characters (<, >, &) must NOT be escaped, and
+// sortedJSON mirrors TS `JSON.stringify(sortObject(payload))`. TS sortObject
+// only re-orders TOP-LEVEL keys alphabetically — nested objects keep their
+// original (insertion) order. Go's json.Marshal of map[string]any sorts ALL
+// keys recursively, which diverges from TS for nested payloads. To match TS,
+// we marshal preserving inner-key order via json.RawMessage and only sort the
+// outermost keys.
+//
+// Two deviations from Go's default must also be corrected to match TS's
+// JSON.stringify output: HTML characters (<, >, &) must NOT be escaped, and
 // there must be no trailing newline (which json.Encoder appends).
 func sortedJSON(v any) ([]byte, error) {
 	b, err := marshalNoEscape(v)
 	if err != nil {
 		return nil, err
 	}
-	// Unmarshal into a map then re-marshal so keys come out sorted.
-	var m map[string]any
-	if err = json.Unmarshal(b, &m); err != nil {
-		// not an object — marshal as-is
+	// Decode the top-level object into ordered raw fields. If v isn't an
+	// object, the canonical form is its plain (non-sorted) marshalling.
+	var raw map[string]json.RawMessage
+	if err = json.Unmarshal(b, &raw); err != nil {
 		return b, nil
 	}
-	return marshalNoEscape(m)
+	keys := make([]string, 0, len(raw))
+	for k := range raw {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	var buf bytes.Buffer
+	buf.WriteByte('{')
+	for i, k := range keys {
+		if i > 0 {
+			buf.WriteByte(',')
+		}
+		kb, err := marshalNoEscape(k)
+		if err != nil {
+			return nil, err
+		}
+		buf.Write(kb)
+		buf.WriteByte(':')
+		// raw[k] preserves the original byte order of nested members
+		buf.Write(raw[k])
+	}
+	buf.WriteByte('}')
+	return buf.Bytes(), nil
 }
 
 // marshalNoEscape JSON-marshals v without HTML escaping and without the trailing

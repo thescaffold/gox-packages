@@ -102,25 +102,44 @@ func (s *EventsSuite) TestMultipleWildcards() {
 	s.T.Expect(waitFor(&mu, &received, 1)).ToEqual(true)
 }
 
-// --- hash wildcard (#) ---
+// --- multi-segment wildcard (**) — matches TS EventEmitter2 ---
 
-func (s *EventsSuite) TestHashWildcard_MatchesZeroOrMore() {
+func (s *EventsSuite) TestDoubleWildcard_MatchesZeroOrMore() {
 	bus := events.NewBus()
 	var mu sync.Mutex
 	var received []string
-	bus.Subscribe("apps.#", collect(&mu, &received))
+	bus.Subscribe("apps.**", collect(&mu, &received))
 	bus.Publish("apps.foo.bar.baz", nil)
 	bus.Publish("apps.x", nil)
 	s.T.Expect(waitFor(&mu, &received, 2)).ToEqual(true)
 }
 
-func (s *EventsSuite) TestHashWildcard_StandaloneMatchesAll() {
+func (s *EventsSuite) TestDoubleWildcard_StandaloneMatchesAll() {
 	bus := events.NewBus()
 	var mu sync.Mutex
 	var received []string
-	bus.Subscribe("#", collect(&mu, &received))
+	bus.Subscribe("**", collect(&mu, &received))
 	bus.Publish("anything.at.all", nil)
 	s.T.Expect(waitFor(&mu, &received, 1)).ToEqual(true)
+}
+
+// --- synchronous dispatch — Publish blocks until handlers return ---
+
+func (s *EventsSuite) TestPublish_IsSynchronous() {
+	bus := events.NewBus()
+	order := []string{}
+	bus.Subscribe("sync.test", func(_ string, _ any) {
+		order = append(order, "handler")
+	})
+	order = append(order, "before")
+	bus.Publish("sync.test", nil)
+	order = append(order, "after")
+	// With sync dispatch (matching TS EventEmitter2.emit), the handler runs
+	// between "before" and "after" — no goroutine, no polling needed.
+	s.T.Expect(len(order)).ToEqual(3)
+	s.T.Expect(order[0]).ToEqual("before")
+	s.T.Expect(order[1]).ToEqual("handler")
+	s.T.Expect(order[2]).ToEqual("after")
 }
 
 // --- multiple subscribers ---
@@ -131,7 +150,7 @@ func (s *EventsSuite) TestMultipleSubscribers_AllReceive() {
 	var received []string
 	bus.Subscribe("x.y", collect(&mu, &received))
 	bus.Subscribe("x.*", collect(&mu, &received))
-	bus.Subscribe("#", collect(&mu, &received))
+	bus.Subscribe("**", collect(&mu, &received))
 	bus.Publish("x.y", nil)
 	s.T.Expect(waitFor(&mu, &received, 3)).ToEqual(true)
 }
@@ -191,7 +210,7 @@ func (s *EventsSuite) TestTrackerService_Message_Lowercased() {
 func (s *EventsSuite) TestTrackerService_Identify_HasUserId() {
 	bus := events.NewBus()
 	done := make(chan any, 1)
-	bus.Subscribe("#", func(_ string, p any) { done <- p })
+	bus.Subscribe("**", func(_ string, p any) { done <- p })
 
 	tracker := events.NewTrackerService(bus)
 	tracker.Identify("user-42", map[string]any{"name": "Alice"})

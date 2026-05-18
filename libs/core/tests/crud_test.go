@@ -336,3 +336,118 @@ func (s *CrudSuite) TestUpsert_NoUpdateParam_Inserts() {
 	s.T.Expect(out.Code()).ToEqual(http.StatusOK)
 	s.T.Expect(entity.insertCalled).ToEqual(true)
 }
+
+// ── Wave-2 parity guards: pinned tests that fail loudly if the CRUD framework
+// regresses on the four behaviours called out in the parity plan as gaps. The
+// memory was stale — these features were already implemented, so the tests
+// below codify them so the next plan-driven refactor does not lose them. ──
+
+// 2.1: Update (PATCH) runs Config.UniqueU. A unique conflict must return 400.
+func (s *CrudSuite) TestUpdate_UniqueU_ConflictReturns400() {
+	entity := &mockEntity[Item]{
+		items:        []Item{{ID: "existing"}},
+		existsResult: true,
+	}
+	r := &crud.CrudResource[Item, Item, Item]{}
+	r.Hydrate(entity, crud.Config[Item, Item, Item]{
+		Name: "Item",
+		UniqueU: func(u *Item) []utils.KeyValue {
+			return []utils.KeyValue{{"name": u.Name}}
+		},
+	})
+	out := r.Update(&crud.UpdateDto[Item]{ID: "existing", Body: Item{Name: "Clash"}})
+	s.T.Expect(out.Code()).ToEqual(http.StatusBadRequest)
+	s.T.Expect(envelope(out).Status).ToEqual("error")
+}
+
+// 2.1 (negative): Update without UniqueU configured skips the check.
+func (s *CrudSuite) TestUpdate_NoUniqueU_PassesThrough() {
+	entity := &mockEntity[Item]{
+		items:        []Item{{ID: "x"}},
+		existsResult: true, // would conflict if the check ran
+	}
+	r := &crud.CrudResource[Item, Item, Item]{}
+	r.Hydrate(entity, crud.Config[Item, Item, Item]{Name: "Item"})
+	out := r.Update(&crud.UpdateDto[Item]{ID: "x", Body: Item{Name: "Whatever"}})
+	s.T.Expect(out.Code()).ToEqual(http.StatusOK)
+}
+
+// 2.2: UpdatePut scopes by :id from UpdatePutDto[C].ID — a missing row
+// returns 400 (BadRequest) rather than silently updating "id IS NOT NULL".
+func (s *CrudSuite) TestUpdatePut_MissingRow_Returns400() {
+	r, _ := newItemResource(crud.Config[Item, Item, Item]{Name: "Item"})
+	out := r.UpdatePut(&crud.UpdatePutDto[Item]{ID: "absent", Body: Item{Name: "X"}})
+	s.T.Expect(out.Code()).ToEqual(http.StatusBadRequest)
+}
+
+func (s *CrudSuite) TestUpdatePut_ExistingRow_Returns200() {
+	r, entity := newItemResource(crud.Config[Item, Item, Item]{Name: "Item"})
+	entity.items = []Item{{ID: "row-1"}}
+	out := r.UpdatePut(&crud.UpdatePutDto[Item]{ID: "row-1", Body: Item{Name: "X"}})
+	s.T.Expect(out.Code()).ToEqual(http.StatusOK)
+	s.T.Expect(entity.updateCalled).ToEqual(true)
+}
+
+// 2.3: FindRelatives dispatches via Config.Relations. The registered hydrator
+// determines `data` shape; without a hydrator the parent entity is returned.
+func (s *CrudSuite) TestFindRelatives_HydratorInvoked() {
+	r, entity := newItemResource(crud.Config[Item, Item, Item]{
+		Name: "Item",
+		Relations: map[string]func(*Item) (any, error){
+			"tags": func(_ *Item) (any, error) {
+				return []map[string]any{{"name": "alpha"}, {"name": "beta"}}, nil
+			},
+		},
+	})
+	entity.items = []Item{{ID: "abc"}}
+	out := r.FindRelatives(&crud.GetDto{ID: "abc", Relative: "tags"})
+	s.T.Expect(out.Code()).ToEqual(http.StatusOK)
+	// Data must be the hydrator's result, NOT the parent entity.
+	data := envelope(out).Data
+	tags, ok := data.([]map[string]any)
+	s.T.Expect(ok).ToEqual(true)
+	s.T.Expect(len(tags)).ToEqual(2)
+}
+
+// 2.4 / 2.5: AfterList / AfterGet morphs can transform the returned entities.
+// The morph is the same enrichment / sort hook the plan called out as missing.
+func (s *CrudSuite) TestAfterList_MorphTransformsEntities() {
+	r, entity := newItemResource(crud.Config[Item, Item, Item]{
+		Name: "Item",
+		Morphs: map[string]crud.MorphFn{
+			crud.AfterList: func(payload any, _ ntxctx.NTXContext) (any, error) {
+				list, _ := payload.([]Item)
+				// Reverse the slice to prove the morph influenced the output.
+				out := make([]Item, len(list))
+				for i, e := range list {
+					out[len(list)-1-i] = e
+				}
+				return out, nil
+			},
+		},
+	})
+	entity.items = []Item{{ID: "1", Name: "A"}, {ID: "2", Name: "B"}}
+	out := r.List(&crud.ListDto{})
+	s.T.Expect(out.Code()).ToEqual(http.StatusOK)
+	got := envelope(out).Data.([]Item)
+	// Morph reversed the order → first item now has Name "B".
+	s.T.Expect(got[0].Name).ToEqual("B")
+}
+
+func (s *CrudSuite) TestAfterGet_MorphReplacesEntity() {
+	r, entity := newItemResource(crud.Config[Item, Item, Item]{
+		Name: "Item",
+		Morphs: map[string]crud.MorphFn{
+			crud.AfterGet: func(payload any, _ ntxctx.NTXContext) (any, error) {
+				e, _ := payload.(*Item)
+				e.Name = "Enriched: " + e.Name
+				return e, nil
+			},
+		},
+	})
+	entity.items = []Item{{ID: "1", Name: "raw"}}
+	out := r.Get(&crud.GetDto{ID: "1"})
+	s.T.Expect(out.Code()).ToEqual(http.StatusOK)
+	got := envelope(out).Data.(*Item)
+	s.T.Expect(got.Name).ToEqual("Enriched: raw")
+}

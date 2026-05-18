@@ -1,6 +1,9 @@
 package utils
 
-import "time"
+import (
+	"fmt"
+	"time"
+)
 
 // Time format constants matching the TS FORMAT object.
 const (
@@ -119,6 +122,43 @@ func (t TzOps) FromUtc(date any) time.Time { return parseToUTC(date).In(t.loc) }
 // StrToDate parses a UTC date string, returning a time.Time. For backward compat
 // with the TS strToDate helper.
 func StrToDate(value string) time.Time { return parseToUTC(value) }
+
+// PrettyTimeLeft renders a duration in ms as a human-readable string,
+// mirroring TS common.util.ts prettyTimeLeft():
+//
+//	ms <= 0 or ms <= 60_000        → "a minute"
+//	round(s/60) <= 60              → "<m> minute(s)"
+//	round(m/60) <= 24              → "<m> hour(s)"   (TS literal — note `m`, not `h`)
+//	otherwise                       → "<d> day(s)"
+//
+// The "<m> hour(s)" branch is a TS bug (uses minutes count in the hour string),
+// preserved verbatim for parity. Callers that want a corrected version should
+// post-process the return value or open a parallel helper.
+func PrettyTimeLeft(ms int64) string {
+	if ms <= 0 || ms <= 60_000 {
+		return "a minute"
+	}
+	s := int64Round(float64(ms) / 1000.0)
+	m := int64Round(float64(s) / 60.0)
+	if m <= 60 {
+		return fmt.Sprintf("%d minute(s)", m)
+	}
+	h := int64Round(float64(m) / 60.0)
+	if h <= 24 {
+		// NOTE: TS uses `${m}` here (minutes count) — kept verbatim.
+		return fmt.Sprintf("%d hour(s)", m)
+	}
+	d := int64Round(float64(h) / 24.0)
+	return fmt.Sprintf("%d day(s)", d)
+}
+
+// int64Round mirrors Math.round semantics (.5 rounds up for positive numbers).
+func int64Round(f float64) int64 {
+	if f >= 0 {
+		return int64(f + 0.5)
+	}
+	return int64(f - 0.5)
+}
 
 // ── parsing helpers ──────────────────────────────────────────────────────────
 

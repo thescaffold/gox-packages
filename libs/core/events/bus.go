@@ -16,11 +16,12 @@ type subscription struct {
 
 // Bus is a thread-safe, in-process wildcard pub/sub event bus.
 //
-// Pattern rules (mirroring EventEmitter2 with delimiter='.'):
-//   - "*"  matches exactly one segment
-//   - "#"  matches zero or more segments
+// Pattern rules mirror TS EventEmitter2 with `wildcard: true, delimiter: '.'`
+// (see ntx-packages/libs/core/src/module/app/app.factory.ts):
+//   - "*"   matches exactly one segment
+//   - "**"  matches zero or more segments
 //
-// Example patterns: "apps.*.*.after-insert", "apps.#", "*"
+// Example patterns: "apps.*.*.after-insert", "apps.**", "*"
 type Bus struct {
 	mu   sync.RWMutex
 	subs []subscription
@@ -44,7 +45,12 @@ func (b *Bus) Subscribe(pattern string, handler EventHandler) {
 }
 
 // Publish dispatches payload to all handlers whose pattern matches eventType.
-// Each handler runs in its own goroutine so callers never block on a slow handler.
+//
+// Handlers run SYNCHRONOUSLY in the publishing goroutine, matching the default
+// behavior of EventEmitter2.emit() in the TS service. (TS uses emitAsync for
+// async dispatch — gox has no equivalent currently.) A slow handler therefore
+// blocks the publisher; callers that want concurrency must launch their own
+// goroutine around Publish.
 func (b *Bus) Publish(eventType string, payload any) {
 	b.mu.RLock()
 	matched := make([]EventHandler, 0)
@@ -57,8 +63,7 @@ func (b *Bus) Publish(eventType string, payload any) {
 	b.mu.RUnlock()
 
 	for _, h := range matched {
-		h := h
-		go h(eventType, payload)
+		h(eventType, payload)
 	}
 }
 
@@ -68,10 +73,10 @@ func matchSegments(pattern, event []string) bool {
 }
 
 func matchAt(pat []string, pi int, ev []string, ei int) bool {
-	// Consume any leading # wildcards eagerly to simplify the hot path.
-	for pi < len(pat) && pat[pi] == "#" {
+	// Consume any leading ** wildcards eagerly to simplify the hot path.
+	for pi < len(pat) && pat[pi] == "**" {
 		pi++
-		// # matches zero or more: try skipping zero segments first.
+		// ** matches zero or more: try skipping zero segments first.
 		if matchAt(pat, pi, ev, ei) {
 			return true
 		}

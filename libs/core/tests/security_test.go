@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"encoding/json"
 	"testing"
 
 	test "github.com/awesome-goose/goose/testing"
@@ -88,4 +89,49 @@ func (s *SecuritySuite) TestCheckSum() {
 func (s *SecuritySuite) TestMD5() {
 	h := security.MD5("hostname")
 	s.T.Expect(len(h)).ToEqual(32)
+}
+
+// TestHmac_TopLevelOnlySort asserts that only the TOP-LEVEL keys are sorted —
+// nested objects keep their original byte order. This mirrors TS sortObject(),
+// which is a non-recursive top-level sort. The Go-side caller must use
+// json.RawMessage for nested objects to retain JS-equivalent insertion order
+// (plain map[string]any loses order because Go maps are unordered).
+// Without the top-level-only behavior, gox sorts nested keys too and the
+// resulting HMAC stops matching what a TS service produces for the same
+// payload — breaking cross-language webhook signing.
+func (s *SecuritySuite) TestHmac_TopLevelOnlySort() {
+	// Two payloads with the same top-level keys but DIFFERENT nested key order.
+	// json.RawMessage preserves the byte order verbatim; the HMAC therefore
+	// reflects that order — they must NOT collapse to the same signature.
+	a := map[string]any{
+		"meta": json.RawMessage(`{"b":2,"a":1}`),
+		"top":  "v",
+	}
+	b := map[string]any{
+		"meta": json.RawMessage(`{"a":1,"b":2}`),
+		"top":  "v",
+	}
+	sigA, _ := security.GenerateHmac(a, "sha256", "k")
+	sigB, _ := security.GenerateHmac(b, "sha256", "k")
+	s.T.Expect(sigA).Not().ToEqual(sigB)
+
+	// Top-level reorder must yield the SAME signature when the nested
+	// bytes are identical — proving top-level keys ARE sorted before signing.
+	c := map[string]any{
+		"top":  "v",
+		"meta": json.RawMessage(`{"a":1,"b":2}`),
+	}
+	sigC, _ := security.GenerateHmac(c, "sha256", "k")
+	s.T.Expect(sigB).ToEqual(sigC)
+}
+
+func (s *SecuritySuite) TestHmac_NonObjectPayloadStillWorks() {
+	// sortedJSON falls through to plain marshalling for non-objects.
+	sigStr, errStr := security.GenerateHmac("hello", "sha256", "k")
+	s.T.Expect(errStr).ToBeNil()
+	s.T.Expect(len(sigStr)).ToEqual(64)
+
+	sigNum, errNum := security.GenerateHmac(42, "sha256", "k")
+	s.T.Expect(errNum).ToBeNil()
+	s.T.Expect(len(sigNum)).ToEqual(64)
 }

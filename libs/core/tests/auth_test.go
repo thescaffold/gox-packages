@@ -7,6 +7,8 @@ import (
 	test "github.com/awesome-goose/goose/testing"
 	"github.com/thescaffold/gox-packages/libs/core/auth"
 	ntxctx "github.com/thescaffold/gox-packages/libs/core/context"
+	"github.com/thescaffold/gox-packages/libs/core/services"
+	"github.com/thescaffold/gox-packages/libs/core/services/throttler"
 )
 
 func TestAuth(t *testing.T) {
@@ -149,4 +151,61 @@ func (s *AuthSuite) TestAuthMiddleware_ExpiredToken_Returns401() {
 	err := mw.Handle(ctx)
 	s.T.Expect(err == nil).ToEqual(false)
 	s.T.Expect(ctx.MockResponse().StatusCode()).ToEqual(401)
+}
+
+// ── StatusGuard ────────────────────────────────────────────────────────────────
+
+// TestStatusGuard_NilPlatform_AllowsThrough mirrors TS:
+// when the platform call fails, "we return false & allow user to try again" —
+// gox interprets that as "do not block".
+func (s *AuthSuite) TestStatusGuard_NilPlatform_AllowsThrough() {
+	g := &auth.StatusGuard{}
+	ctx := test.NewMockContext()
+	err := g.Handle(ctx)
+	s.T.Expect(err).ToBeNil()
+}
+
+// ── UserThrottleGuard ──────────────────────────────────────────────────────────
+
+func (s *AuthSuite) TestUserThrottleGuard_NilThrottler_AllowsThrough() {
+	g := &auth.UserThrottleGuard{}
+	ctx := test.NewMockContext()
+	err := g.Handle(ctx)
+	s.T.Expect(err).ToBeNil()
+}
+
+func (s *AuthSuite) TestUserThrottleGuard_NoIDFound_AllowsThrough() {
+	cache := services.NewMemoryBackend()
+	tr := throttler.New(cache, time.Minute, 60)
+	g := &auth.UserThrottleGuard{Throttler: tr}
+	ctx := test.NewMockContext() // no claims, no body
+	err := g.Handle(ctx)
+	s.T.Expect(err).ToBeNil()
+}
+
+// TestUserThrottleGuard_BlocksOverLimit confirms the guard returns 429 once
+// the throttler reports `allowed=false`. Mirrors TS canActivate returning a
+// HttpException(TOO_MANY_REQUESTS).
+func (s *AuthSuite) TestUserThrottleGuard_BlocksOverLimit() {
+	cache := services.NewMemoryBackend()
+	tr := throttler.New(cache, time.Minute, 1) // limit = 1
+	g := &auth.UserThrottleGuard{Throttler: tr}
+
+	// First hit registers the bucket — allow.
+	ctx1 := test.NewMockContext()
+	// Inject a fake claim via the auth middleware token path.
+	tok, _ := auth.Sign(map[string]any{"id": "u-throttled"}, testSecret, time.Hour)
+	ctx1.MockRequest().WithHeader("authorization", "Bearer "+tok)
+	mw := &auth.AuthMiddleware{Secret: testSecret}
+	_ = mw.Handle(ctx1)
+	err := g.Handle(ctx1)
+	s.T.Expect(err).ToBeNil()
+
+	// Second hit exceeds limit — block.
+	ctx2 := test.NewMockContext()
+	ctx2.MockRequest().WithHeader("authorization", "Bearer "+tok)
+	_ = mw.Handle(ctx2)
+	err = g.Handle(ctx2)
+	s.T.Expect(err == nil).ToEqual(false)
+	s.T.Expect(ctx2.MockResponse().StatusCode()).ToEqual(429)
 }

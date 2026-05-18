@@ -150,6 +150,20 @@ func formatInt(n int64) string {
 	return string(buf[i:])
 }
 
+// purgeExpired walks the store under lock and removes entries whose expiresAt
+// is in the past. Called by CacheService.StartCleanup's goroutine; left
+// unexported because callers should not need to manage it directly.
+func (m *MemoryBackend) purgeExpired() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	now := time.Now()
+	for k, e := range m.store {
+		if !e.expiresAt.IsZero() && now.After(e.expiresAt) {
+			delete(m.store, k)
+		}
+	}
+}
+
 func (m *MemoryBackend) TTL(key string) time.Duration {
 	m.mu.Lock()
 	defer m.mu.Unlock()
