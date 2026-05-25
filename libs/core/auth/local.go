@@ -64,3 +64,13 @@ func writeForbidden(ctx types.Context, message string) error {
 	_ = ctx.Response().Write(types.SerialTypeObject, body, http.StatusForbidden)
 	return errForbidden
 }
+
+// writeBadRequest writes a 400 envelope carrying separate title/message fields,
+// mirroring TS error(title, message) which throws an HttpException with
+// HttpStatus.BAD_REQUEST and body {status:'error', title, message, data:null}.
+func writeBadRequest(ctx types.Context, title, message string) error {
+	env := response.BadRequest(title, message).Data()
+	body, _ := json.Marshal(env)
+	_ = ctx.Response().Write(types.SerialTypeObject, body, http.StatusBadRequest)
+	return errForbidden
+}

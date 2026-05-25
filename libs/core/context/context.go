@@ -3,6 +3,7 @@ package context
 import (
 	"encoding/base64"
 	"encoding/json"
+	"os"
 	"strings"
 
 	"github.com/awesome-goose/goose/types"
@@ -77,6 +78,10 @@ func Parse(headers map[string][]string) NTXContext {
 		tracingID = utils.Reference("TID", 36)
 	}
 	source := get("x-ntx-source")
+	if source == "" {
+		// TS parseHeaders: source: headers['x-ntx-source'] ?? process.env.APP_NAME.
+		source = os.Getenv("APP_NAME")
+	}
 
 	return NTXContext{
 		Method:      get("x-ntx-method"),

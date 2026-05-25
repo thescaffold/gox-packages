@@ -145,3 +145,46 @@ func (s *FilterSuite) TestDateRange_Empty_WhenNotProvided() {
 	s.T.Expect(r.DateFrom).ToEqual("")
 	s.T.Expect(r.DateTo).ToEqual("")
 }
+
+// --- SQL error mapping (GetSQLError / DefaultSQLMapper) ---
+// Mirrors TS getSqlError() + error.filter.ts QueryFailedError handling.
+
+func (s *FilterSuite) TestGetSQLError_PostgresUnique() {
+	s.T.Expect(filter.GetSQLError("23505")).ToEqual("This value already exists. Please choose a different value.")
+}
+
+func (s *FilterSuite) TestGetSQLError_MysqlDuplicate() {
+	s.T.Expect(filter.GetSQLError("1062")).ToEqual("The provided value already exists. Please choose a different value.")
+}
+
+func (s *FilterSuite) TestGetSQLError_MysqlNumericCode() {
+	// TS getSqlError stringifies the code, so a numeric errno resolves too.
+	s.T.Expect(filter.GetSQLError(1213)).ToEqual("A deadlock was detected. Please retry the transaction.")
+}
+
+func (s *FilterSuite) TestGetSQLError_UnknownFallback() {
+	s.T.Expect(filter.GetSQLError("99999")).ToEqual("Check your request and try again, something is not quite right with it")
+}
+
+func (s *FilterSuite) TestDefaultSQLMapper_Postgres() {
+	err := errorString(`ERROR: duplicate key value violates unique constraint "users_email_key" (SQLSTATE 23505)`)
+	handled, msg := filter.DefaultSQLMapper(err)
+	s.T.Expect(handled).ToEqual(true)
+	s.T.Expect(msg).ToEqual("This value already exists. Please choose a different value.")
+}
+
+func (s *FilterSuite) TestDefaultSQLMapper_Mysql() {
+	err := errorString("Error 1062 (23000): Duplicate entry 'a@b.com' for key 'users.email'")
+	handled, msg := filter.DefaultSQLMapper(err)
+	s.T.Expect(handled).ToEqual(true)
+	s.T.Expect(msg).ToEqual("The provided value already exists. Please choose a different value.")
+}
+
+func (s *FilterSuite) TestDefaultSQLMapper_NonSQLError() {
+	handled, _ := filter.DefaultSQLMapper(errorString("some random failure"))
+	s.T.Expect(handled).ToEqual(false)
+}
+
+type errorString string
+
+func (e errorString) Error() string { return string(e) }

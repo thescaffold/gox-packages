@@ -177,5 +177,25 @@ func (s *BlobsSuite) TestUpload_MissingFile_ReturnsFalse() {
 	}, corehttp.New(""))
 	ok, msg := svc.Upload("/no/such/file.txt", "", nil)
 	s.T.Expect(ok).ToEqual(false)
-	s.T.Expect(msg == "").ToEqual(false)
+	// jsx-blobs getFileMetaForNode returns [] on stat failure, so the message is
+	// "Invalid file metadata" (not "Failed to read file metadata").
+	s.T.Expect(msg).ToEqual("Invalid file metadata")
+}
+
+// A dotfile like ".env" has no extension under Node's path.extname semantics, so
+// jsx-blobs upload() rejects it with "Invalid file metadata".
+func (s *BlobsSuite) TestUpload_Dotfile_RejectedAsInvalid() {
+	srv := newScaffoldRecorder()
+	defer srv.Close()
+	svc := files.NewFilesService(files.Config{
+		Server: srv.URL, Credential: "tok", SourceId: "src",
+	}, corehttp.New(""))
+
+	dir, _ := os.MkdirTemp("", "blobs-dot-*")
+	path := filepath.Join(dir, ".env")
+	_ = os.WriteFile(path, []byte("SECRET=1"), 0o644)
+
+	ok, msg := svc.Upload(path, "", nil)
+	s.T.Expect(ok).ToEqual(false)
+	s.T.Expect(msg).ToEqual("Invalid file metadata")
 }

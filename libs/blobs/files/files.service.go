@@ -68,10 +68,10 @@ func NewFilesService(cfg Config, client *corehttp.Client) *FilesService {
 // Upload reads the file at path, uploads its bytes in chunks, and returns
 // (success, urlOrErrorMessage) — exactly like jsx-blobs upload().
 func (s *FilesService) Upload(input, parentID string, tags []string) (bool, string) {
-	ext, mime, size, name, err := getFileMeta(input)
-	if err != nil {
-		return false, "Failed to read file metadata"
-	}
+	// jsx-blobs getFileMetaForNode returns [] on any failure (empty path or stat
+	// error), so upload's `!meta` ("Failed to read file metadata") branch is dead
+	// — every failure surfaces as "Invalid file metadata" via the field check.
+	ext, mime, size, name := getFileMeta(input)
 	if ext == "" || mime == "" || size == 0 || name == "" {
 		return false, "Invalid file metadata"
 	}
@@ -212,21 +212,34 @@ func streamFileChunks(path string, cb func(chunk string, index int) error) (int,
 	return index, nil
 }
 
-// getFileMeta returns (ext, mime, size, name, err) for the given path.
-// Mirrors jsx-blobs getFileMetaForNode.
-func getFileMeta(path string) (string, string, int64, string, error) {
+// getFileMeta returns (ext, mime, size, name) for the given path, mirroring
+// jsx-blobs getFileMetaForNode which returns [] (all-empty here) for an empty
+// path or a stat failure. ext follows Node's path.extname semantics: a leading
+// dot is NOT an extension separator, so a dotfile like ".env" has no extension.
+func getFileMeta(path string) (string, string, int64, string) {
 	if path == "" {
-		return "", "", 0, "", fmt.Errorf("blobs: empty path")
+		return "", "", 0, ""
 	}
 	stat, err := os.Stat(path)
 	if err != nil {
-		return "", "", 0, "", err
+		return "", "", 0, ""
 	}
 	name := filepath.Base(path)
-	ext := strings.TrimPrefix(strings.ToLower(filepath.Ext(path)), ".")
+	ext := strings.TrimPrefix(strings.ToLower(nodeExtname(path)), ".")
 	mime := mimeMap[ext]
 	if mime == "" {
 		mime = "application/octet-stream"
 	}
-	return ext, mime, stat.Size(), name, nil
+	return ext, mime, stat.Size(), name
+}
+
+// nodeExtname mirrors Node.js path.extname: the extension is the substring from
+// the last dot in the basename, but a leading dot (dotfile) is not treated as a
+// separator. e.g. ".env" → "", "a.tar.gz" → ".gz", "file" → "", "file." → ".".
+func nodeExtname(path string) string {
+	base := filepath.Base(path)
+	if dot := strings.LastIndexByte(base, '.'); dot > 0 {
+		return base[dot:]
+	}
+	return ""
 }

@@ -15,13 +15,15 @@ var errForbidden = errors.New("forbidden")
 
 // StatusGuard checks the authenticated principal's billing status via the
 // platform capital service. Mirrors ntx-packages/libs/core/src/guards/
-// status.guard.ts: it calls apps.capital.get.status() and, when the returned
-// `data.danger` flag is true, rejects with a translated error envelope. A
-// failed platform call returns nil (allow-through) so users aren't locked out
-// by a transient capital outage — same as TS `if (status !== true) return false`
-// (note: TS's `return false` translates to "deny" in Nest; gox treats a missing
-// auth context as upstream and lets the request pass — see writeForbidden for
-// the actual deny path).
+// status.guard.ts:
+//   - it calls apps.capital.get.status();
+//   - if status !== true (the platform call failed/returned false) it denies
+//     the request — TS `return false` maps to a 403 Forbidden in Nest, so we
+//     fail closed with a 403 here too;
+//   - if the returned `data.danger` flag is true it rejects with a translated
+//     error envelope at 400 Bad Request — TS calls error(title, message) whose
+//     default HttpStatus is BAD_REQUEST;
+//   - otherwise the request is allowed.
 //
 // Place this middleware AFTER AuthMiddleware so claims are available.
 type StatusGuard struct {
@@ -41,9 +43,9 @@ func (g *StatusGuard) Handle(ctx types.Context) error {
 
 	res := g.Platform.CapitalGetStatus()
 	if !res.Status {
-		// "not sure if the user is active or not, so we return false & allow
-		// user to try again" — TS behavior preserved verbatim.
-		return nil
+		// TS: `if (status !== true) return false`, which in NestJS denies the
+		// request with 403 Forbidden. Mirror that fail-closed behaviour.
+		return writeForbidden(ctx, "Forbidden")
 	}
 
 	data, _ := res.Data.(map[string]any)
@@ -68,7 +70,9 @@ func (g *StatusGuard) Handle(ctx types.Context) error {
 	if message == "" {
 		message = "account status check failed"
 	}
-	return writeForbidden(ctx, title+": "+message)
+	// TS error(title, message) → 400 Bad Request with separate title/message
+	// envelope fields.
+	return writeBadRequest(ctx, title, message)
 }
 
 // readPreferenceHeader returns the decoded x-ntx-preference header, or nil

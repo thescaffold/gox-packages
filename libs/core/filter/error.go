@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"regexp"
 	"runtime/debug"
 	"strings"
 
@@ -40,6 +41,36 @@ var (
 // the raw message (mirrors TS getSqlError(errno|code)).
 type SQLErrorMapper func(err error) (handled bool, friendly string)
 
+var (
+	// pgSQLStateRe matches the "(SQLSTATE 23505)" suffix GORM appends to wrapped
+	// PostgreSQL driver errors.
+	pgSQLStateRe = regexp.MustCompile(`SQLSTATE (\w{5})`)
+	// mysqlErrnoRe matches the "Error 1062 (23000)" prefix of go-sql-driver MySQL
+	// errors — TS reads exception.errno (the numeric code), so we capture that.
+	mysqlErrnoRe = regexp.MustCompile(`Error (\d+) \(\d{5}\)`)
+)
+
+// DefaultSQLMapper detects a DB driver error by its distinctive signature and
+// returns the friendly GetSQLError message — mirroring TS error.filter.ts which
+// runs getSqlError(exception.errno ?? exception.code) for every QueryFailedError.
+// It recognises PostgreSQL errors (which carry "(SQLSTATE <code>)") and MySQL
+// errors (which carry "Error <errno> (<sqlstate>)"), without taking a driver
+// dependency. Unknown-but-detected codes still yield the GetSQLError fallback,
+// exactly as TS getSqlError does.
+func DefaultSQLMapper(err error) (bool, string) {
+	if err == nil {
+		return false, ""
+	}
+	msg := err.Error()
+	if m := pgSQLStateRe.FindStringSubmatch(msg); len(m) > 1 {
+		return true, GetSQLError(m[1])
+	}
+	if m := mysqlErrnoRe.FindStringSubmatch(msg); len(m) > 1 {
+		return true, GetSQLError(m[1])
+	}
+	return false, ""
+}
+
 // SentryHook is called once per captured exception. Wire your Sentry SDK here.
 type SentryHook func(err error, stack []byte)
 
@@ -60,7 +91,11 @@ type ErrorMiddleware struct {
 // Pass nil for any field you don't need; sensible defaults apply.
 func NewErrorMiddleware(tracker *events.TrackerService) *ErrorMiddleware {
 	return &ErrorMiddleware{
-		Tracker:      tracker,
+		Tracker: tracker,
+		// Wire the SQL-error mapper by default so DB constraint/driver errors are
+		// translated to friendly messages, matching TS error.filter.ts which
+		// always runs getSqlError() on a QueryFailedError.
+		SQLMapper:    DefaultSQLMapper,
 		DefaultTitle: "Oops",
 		DefaultMsg:   "Something went wrong. It's not you, it's us and we are working on fixing it",
 	}

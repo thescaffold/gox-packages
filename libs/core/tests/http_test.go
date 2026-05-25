@@ -64,6 +64,21 @@ func (s *HttpSuite) TestExternal_404_ReturnsFalse() {
 	s.T.Expect(status).ToEqual(404)
 }
 
+// statusText must be the reason phrase only ("OK"/"Not Found"), matching axios
+// response.statusText — NOT Go's "200 OK" status line.
+func (s *HttpSuite) TestExternal_StatusText_IsReasonPhraseOnly() {
+	srv := newMockServer(200, map[string]any{"ok": true})
+	defer srv.Close()
+	c := ntxhttp.New("secret")
+	_, _, statusText, _, _ := c.External("GET", srv.URL+"/ping", nil, nil, nil, 0)
+	s.T.Expect(statusText).ToEqual("OK")
+
+	srv2 := newMockServer(404, map[string]any{"error": "x"})
+	defer srv2.Close()
+	_, _, statusText2, _, _ := c.External("GET", srv2.URL+"/missing", nil, nil, nil, 0)
+	s.T.Expect(statusText2).ToEqual("Not Found")
+}
+
 func (s *HttpSuite) TestExternal_POST_SendsBody() {
 	var received map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -166,7 +181,12 @@ func (s *HttpSuite) TestExternal_Retry_ExhaustsAllAttempts() {
 func (s *HttpSuite) TestExternal_UnreachableHost_Returns503() {
 	c := ntxhttp.New("secret")
 	c.HTTPClient.Timeout = 0 // let it fail fast with invalid host
-	ok, status, _, _, _ := c.External("GET", "http://127.0.0.1:1", nil, nil, nil, 0)
+	ok, status, statusText, errBody, data := c.External("GET", "http://127.0.0.1:1", nil, nil, nil, 0)
 	s.T.Expect(ok).ToEqual(false)
 	s.T.Expect(status).ToEqual(503)
+	s.T.Expect(statusText).ToEqual("Service is Down")
+	// TS network-error tuple: errBody (slot 3) is the friendly message; the raw
+	// error/exception is in the data slot (slot 4).
+	s.T.Expect(errBody).ToEqual("One of our service is temporary down. We are on it, it would be back soon.")
+	s.T.Expect(data == nil).ToEqual(false)
 }

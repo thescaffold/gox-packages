@@ -34,7 +34,7 @@ type PolylogConfig struct {
 	// Logs filters which log levels are emitted.
 	Logs []events.LogType
 	// Batch tunes the flusher; zero values fall back to jsx-polylog defaults
-	// (5s interval, 1s backoff, 3 retries).
+	// (5s interval, 30s backoff, 3 retries).
 	Batch events.BatchConfig
 	// Log/Event are kept for parity with jsx-polylog Config — currently advisory.
 	Log   LogConfig

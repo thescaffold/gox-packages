@@ -127,7 +127,10 @@ func (c *Client) request(method, rawURL string, body any, queries, headers map[s
 func (c *Client) do(method, rawURL string, body io.Reader, headers map[string]string, jsxMode bool) (bool, int, string, any, any) {
 	req, err := http.NewRequest(method, rawURL, body)
 	if err != nil {
-		return false, 503, "Service is Down", err.Error(), nil
+		// TS catch (no response): [false, 503, 'Service is Down', <friendly msg>, <exception>].
+		return false, 503, "Service is Down",
+			"One of our service is temporary down. We are on it, it would be back soon.",
+			err.Error()
 	}
 	for k, v := range headers {
 		req.Header.Set(k, v)
@@ -135,8 +138,12 @@ func (c *Client) do(method, rawURL string, body io.Reader, headers map[string]st
 
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
-		return false, 503, "Service is Down", err.Error(),
-			"One of our service is temporary down. We are on it, it would be back soon."
+		// TS catch (no response): [false, 503, 'Service is Down', <friendly msg>, <exception>].
+		// The friendly message goes in the errBody slot (3); the raw error goes
+		// in the data slot (4) — mirroring TS exactly.
+		return false, 503, "Service is Down",
+			"One of our service is temporary down. We are on it, it would be back soon.",
+			err.Error()
 	}
 	defer resp.Body.Close()
 
@@ -151,7 +158,13 @@ func (c *Client) do(method, rawURL string, body io.Reader, headers map[string]st
 		// jsx-* axios validateStatus: status < 500 is a non-throwing response.
 		ok = resp.StatusCode < 500
 	}
-	return ok, resp.StatusCode, resp.Status, nil, data
+	// axios exposes the reason phrase only (e.g. "OK"), not Go's "200 OK" status
+	// line; strip the leading numeric code to match response.statusText.
+	statusText := resp.Status
+	if i := strings.IndexByte(resp.Status, ' '); i >= 0 {
+		statusText = resp.Status[i+1:]
+	}
+	return ok, resp.StatusCode, statusText, nil, data
 }
 
 // toStringMap coerces headers/queries to map[string]string.

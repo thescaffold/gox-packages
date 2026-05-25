@@ -212,6 +212,28 @@ func (s *UtilsSuite) TestIsPhone_Invalid() {
 	s.T.Expect(utils.IsPhone("12345")).ToEqual(false)
 }
 
+func (s *UtilsSuite) TestIsPhone_LocalPrefix234() {
+	// 234-prefixed, length 13 — mirrors TS isPhoneNumber.
+	s.T.Expect(utils.IsPhone("2348012345678")).ToEqual(true)
+}
+
+func (s *UtilsSuite) TestIsPhone_DigitPatternNotConstrained() {
+	// TS isPhoneNumber only checks numeric + length{11,13,14} + prefix; it does
+	// NOT enforce the [789][01] mobile shape. "01234567890" starts with 0, is
+	// 11 digits and numeric, so it is valid in TS and must be valid here too.
+	s.T.Expect(utils.IsPhone("01234567890")).ToEqual(true)
+}
+
+func (s *UtilsSuite) TestIsPhone_WrongLength() {
+	// 10 digits — not in {11,13,14}.
+	s.T.Expect(utils.IsPhone("0801234567")).ToEqual(false)
+}
+
+func (s *UtilsSuite) TestIsPhone_NonNumeric() {
+	// isNumberString fails on a trailing letter.
+	s.T.Expect(utils.IsPhone("0801234567a")).ToEqual(false)
+}
+
 func (s *UtilsSuite) TestIsNumeric_Integer() {
 	s.T.Expect(utils.IsNumeric("42")).ToEqual(true)
 }

@@ -10,11 +10,13 @@ import (
 
 var (
 	emailRe = regexp.MustCompile(`^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$`)
-	// Nigerian: +2340XXXXXXXXX (14), 2340XXXXXXXXX (13), 0XXXXXXXXXX (11)
-	phoneRe  = regexp.MustCompile(`^(\+234|234|0)[789][01]\d{8}$`)
-	numRe    = regexp.MustCompile(`^-?\d+(\.\d+)?$`)
-	digitsRe = regexp.MustCompile(`\d`)
-	uuidRe   = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$`)
+	numRe   = regexp.MustCompile(`^-?\d+(\.\d+)?$`)
+	// numberStringRe mirrors class-validator's isNumberString (validator.js
+	// isNumeric with default options): an optional leading sign, an optional
+	// integer part followed by a decimal point, then one or more digits.
+	numberStringRe = regexp.MustCompile(`^[+-]?(\d*\.)?\d+$`)
+	digitsRe       = regexp.MustCompile(`\d`)
+	uuidRe         = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$`)
 )
 
 // IsEmail returns true if v is a valid email address.
@@ -24,10 +26,27 @@ func IsEmail(v string) bool {
 	return emailRe.MatchString(v)
 }
 
-// IsPhone returns true if v is a valid Nigerian phone number.
-// Mirrors TS isPhoneNumber() — no trimming is applied to the input.
+// IsPhone returns true if v is a valid Nigerian phone number. Mirrors TS
+// common.util.ts isPhoneNumber(): a numeric string (class-validator
+// isNumberString) whose length is 11, 13 or 14 and which starts with "+234",
+// "234" or "0". The internal digit pattern is NOT constrained — TS does not
+// enforce the [789][01] mobile-prefix shape, so neither do we.
 func IsPhone(v string) bool {
-	return phoneRe.MatchString(v)
+	if !isNumberString(v) {
+		return false
+	}
+	if l := len(v); l != 11 && l != 13 && l != 14 {
+		return false
+	}
+	return strings.HasPrefix(v, "+234") ||
+		strings.HasPrefix(v, "234") ||
+		strings.HasPrefix(v, "0")
+}
+
+// isNumberString mirrors class-validator's isNumberString (validator.js
+// isNumeric with default options).
+func isNumberString(v string) bool {
+	return numberStringRe.MatchString(v)
 }
 
 // IsNumeric returns true if v is a numeric string (integer or decimal).

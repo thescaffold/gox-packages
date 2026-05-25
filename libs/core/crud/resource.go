@@ -335,8 +335,10 @@ func (r *CrudResource[E, C, U]) Upsert(dto *UpsertDto[C]) types.Output {
 // Mirrors TS updatePut(): scope the update to a single row via :id, run
 // Before/After hooks + the BeforeCreate morph (TS uses morphRequest on the
 // CreateDto here), and return the resulting entity. A missing :id row mirrors
-// the TS error() envelope (BadRequest); a unique-conflict on a non-self row
-// returns the same `put.update.error.existing` envelope shape as create.
+// the TS error() envelope (BadRequest). Unlike PATCH, the TS PUT unique-check
+// does NOT exclude the row being updated (its where clause is `unique` with no
+// `id: Not(id)`), so re-submitting a row's own unique value is itself a
+// conflict — we mirror that by passing an empty excludeID below.
 func (r *CrudResource[E, C, U]) UpdatePut(dto *UpdatePutDto[C]) types.Output {
 	ctx := dto.Ctx
 	id := dto.ID
@@ -359,7 +361,8 @@ func (r *CrudResource[E, C, U]) UpdatePut(dto *UpdatePutDto[C]) types.Output {
 			r.tr("packages.core.crud.put.update.error.not-found", ctx))
 	}
 
-	if out := r.checkUnique(&payload, id, ctx, "packages.core.crud.put.update.error.existing"); out != nil {
+	// TS updatePut does not exclude the current row from the unique-check.
+	if out := r.checkUnique(&payload, "", ctx, "packages.core.crud.put.update.error.existing"); out != nil {
 		return out
 	}
 

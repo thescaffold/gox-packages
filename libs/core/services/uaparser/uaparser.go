@@ -1,8 +1,26 @@
 // Package uaparser ports ntx-packages/libs/core/src/services/ua-parser.service.ts.
 // UAParserService parses User-Agent strings into structured browser/os/engine/
-// device/cpu fields. Mirrors the ua-parser-js library that the TS service wraps,
-// with the same `Object.values(obj).join('/')` stringify semantics that the
-// downstream identity providers depend on.
+// device/cpu fields. The TS service wraps ua-parser-js v2 and stringifies each
+// result group with `Object.values(obj).join('/')`, so the FIELD ORDER and the
+// FIELD COUNT of every group are load-bearing:
+//
+//	browser → name/version/major/type   (4 slots)
+//	cpu     → architecture              (1 slot)
+//	device  → type/model/vendor         (3 slots)
+//	engine  → name/version              (2 slots)
+//	os      → name/version              (2 slots)
+//
+// ua-parser-js initialises every group with all keys present (undefined when not
+// detected), and `join('/')` turns undefined into "". So an unrecognised UA does
+// NOT yield an empty string — it yields the empty-slot skeleton: browser "///",
+// os "/", engine "/", device "//", cpu "". We reproduce that exactly by always
+// returning fixed-length slices.
+//
+// NOTE: ua-parser-js ships a large device model/vendor database we cannot fully
+// reproduce by hand. The structural shape, OS/browser/engine naming, Windows
+// version mapping and the common Apple/Android device cases match exactly; the
+// Android model/vendor string remains a best-effort approximation for devices
+// outside the common majors.
 package uaparser
 
 import (
@@ -26,20 +44,16 @@ type Service struct{}
 // New constructs a UA Parser service.
 func New() *Service { return &Service{} }
 
-// Parse extracts browser/os/engine/device/cpu from ua. An empty UA yields the
-// zero-value Result (all empty strings), matching TS which returns null fields
-// when ua-parser-js can't classify the input — the gox stringify uses "" in
-// that slot rather than the JS string "null" so downstream null-checks work.
+// Parse extracts browser/os/engine/device/cpu from ua. Mirrors the TS service:
+// it does not short-circuit an empty UA — ua-parser-js still emits the empty-slot
+// skeleton (browser "///", os "/", engine "/", device "//", cpu "").
 func (s *Service) Parse(ua string) Result {
-	if ua == "" {
-		return Result{}
-	}
 	return Result{
-		Browser: stringify(detectBrowser(ua)),
-		OS:      stringify(detectOS(ua)),
-		Engine:  stringify(detectEngine(ua)),
-		Device:  stringify(detectDevice(ua)),
-		CPU:     stringify(detectCPU(ua)),
+		Browser: strings.Join(detectBrowser(ua), "/"),
+		OS:      strings.Join(detectOS(ua), "/"),
+		Engine:  strings.Join(detectEngine(ua), "/"),
+		Device:  strings.Join(detectDevice(ua), "/"),
+		CPU:     strings.Join(detectCPU(ua), "/"),
 	}
 }
 
@@ -58,8 +72,8 @@ var browserRules = []browserRule{
 	{"Edge", regexp.MustCompile(`Edg(?:e|A|iOS)?/([\d.]+)`)},
 	{"Opera", regexp.MustCompile(`OPR/([\d.]+)`)},
 	{"Opera", regexp.MustCompile(`Opera/([\d.]+)`)},
-	{"Chrome Mobile", regexp.MustCompile(`CriOS/([\d.]+)`)},
-	{"Firefox", regexp.MustCompile(`FxiOS/([\d.]+)`)},
+	{"Mobile Chrome", regexp.MustCompile(`CriOS/([\d.]+)`)},
+	{"Mobile Firefox", regexp.MustCompile(`FxiOS/([\d.]+)`)},
 	{"Chromium", regexp.MustCompile(`Chromium/([\d.]+)`)},
 	{"Samsung Internet", regexp.MustCompile(`SamsungBrowser/([\d.]+)`)},
 	{"Chrome", regexp.MustCompile(`Chrome/([\d.]+)`)},
@@ -73,16 +87,25 @@ var browserRules = []browserRule{
 	{"IE", regexp.MustCompile(`rv:([\d.]+).*Trident`)},
 }
 
-// detectBrowser returns [name, version, major]. Mirrors ua-parser-js's
-// getBrowser() which exposes {name, version, major}. Major is the leading
-// integer of version.
+// detectBrowser returns [name, version, major, type]. Mirrors ua-parser-js
+// getBrowser() {name, version, major, type}. type is empty for normal browsers
+// (ua-parser-js only sets it to "inapp"/etc. for in-app webviews). ua-parser-js
+// prefixes "Mobile " to Chrome/Firefox on mobile UAs (e.g. "Mobile Chrome").
 func detectBrowser(ua string) []string {
+	out := []string{"", "", "", ""}
 	for _, r := range browserRules {
 		if m := r.re.FindStringSubmatch(ua); len(m) > 1 {
-			return []string{r.name, m[1], majorVersion(m[1])}
+			name := r.name
+			if (name == "Chrome" || name == "Firefox") && strings.Contains(ua, "Mobile") {
+				name = "Mobile " + name
+			}
+			out[0] = name
+			out[1] = m[1]
+			out[2] = majorVersion(m[1])
+			return out
 		}
 	}
-	return nil
+	return out
 }
 
 // majorVersion returns the leading integer portion of "X.Y.Z" — e.g. "120" for
@@ -99,109 +122,141 @@ func majorVersion(version string) string {
 
 // ── os ─────────────────────────────────────────────────────────────────────────
 
-// detectOS returns [name, version]. Mirrors ua-parser-js getOS()'s {name,version}.
-// version is normalized to dotted form (TS-style) even when the UA used
-// underscores (the Apple convention).
+// windowsVersionMap maps the captured "Windows NT <x>" version to the marketing
+// name ua-parser-js reports (windowsVersionMap in ua-parser.js).
+var windowsVersionMap = map[string]string{
+	"4.90": "ME",
+	"3.51": "NT 3.51",
+	"4.0":  "NT 4.0",
+	"5.0":  "2000",
+	"5.01": "2000",
+	"5.1":  "XP",
+	"5.2":  "XP",
+	"6.0":  "Vista",
+	"6.1":  "7",
+	"6.2":  "8",
+	"6.3":  "8.1",
+	"6.4":  "10",
+	"10.0": "10",
+}
+
+// detectOS returns [name, version]. Mirrors ua-parser-js getOS() {name, version}.
+// Apple underscores are normalised to dots; the Windows NT number is mapped to
+// its marketing name (NT 10.0 → "10", 6.1 → "7", 6.3 → "8.1", …).
 func detectOS(ua string) []string {
+	out := []string{"", ""}
 	switch {
 	case strings.Contains(ua, "Windows NT"):
-		return []string{"Windows", regexpFind(`Windows NT ([\d.]+)`, ua)}
+		out[0] = "Windows"
+		v := regexpFind(`Windows NT ([\d.]+)`, ua)
+		if name, ok := windowsVersionMap[v]; ok {
+			out[1] = name
+		} else {
+			out[1] = v
+		}
 	// iPhone OS UAs also contain "Mac OS X" (Apple compat token) — check iOS
 	// before Mac OS so "iPhone; CPU iPhone OS 17_5_1 like Mac OS X" classifies
 	// as iOS/17.5.1, not Mac OS.
 	case strings.Contains(ua, "iPhone OS") || strings.Contains(ua, "iPad") || strings.Contains(ua, "iPod"):
-		v := regexpFind(`OS ([\d_]+) like Mac OS`, ua)
-		return []string{"iOS", strings.ReplaceAll(v, "_", ".")}
+		out[0] = "iOS"
+		out[1] = strings.ReplaceAll(regexpFind(`OS ([\d_]+) like Mac OS`, ua), "_", ".")
 	case strings.Contains(ua, "Mac OS X"):
-		v := regexpFind(`Mac OS X ([\d_\.]+)`, ua)
-		// Apple writes underscores; ua-parser-js normalizes to dots.
-		return []string{"Mac OS", strings.ReplaceAll(v, "_", ".")}
+		// ua-parser-js v2 reports "macOS" (not "Mac OS") and normalises
+		// underscores to dots.
+		out[0] = "macOS"
+		out[1] = strings.ReplaceAll(regexpFind(`Mac OS X ([\d_\.]+)`, ua), "_", ".")
 	case strings.Contains(ua, "CrOS"):
-		return []string{"Chromium OS", regexpFind(`CrOS [^ ]+ ([\d.]+)`, ua)}
+		out[0] = "Chrome OS"
+		out[1] = regexpFind(`CrOS [^ ]+ ([\d.]+)`, ua)
 	case strings.Contains(ua, "Android"):
-		return []string{"Android", regexpFind(`Android ([\d.]+)`, ua)}
+		out[0] = "Android"
+		out[1] = regexpFind(`Android ([\d.]+)`, ua)
 	case strings.Contains(ua, "Ubuntu"):
-		return []string{"Ubuntu", regexpFind(`Ubuntu/([\d.]+)`, ua)}
+		out[0] = "Ubuntu"
+		out[1] = regexpFind(`Ubuntu/([\d.]+)`, ua)
 	case strings.Contains(ua, "Fedora"):
-		return []string{"Fedora", ""}
+		out[0] = "Fedora"
 	case strings.Contains(ua, "Linux"):
-		return []string{"Linux", ""}
+		out[0] = "Linux"
 	case strings.Contains(ua, "FreeBSD"):
-		return []string{"FreeBSD", ""}
+		out[0] = "FreeBSD"
 	}
-	return nil
+	return out
 }
 
 // ── engine ─────────────────────────────────────────────────────────────────────
 
-// detectEngine returns [name, version]. Mirrors ua-parser-js getEngine().
-// Blink is reported separately from WebKit when present — matches ua-parser-js
-// modern behaviour for Chromium-based browsers.
+// detectEngine returns [name, version]. Mirrors ua-parser-js getEngine(). For
+// Chromium-based browsers the engine is "Blink" and its version is the CHROME
+// version (not the AppleWebKit version), matching ua-parser-js.
 func detectEngine(ua string) []string {
+	out := []string{"", ""}
 	switch {
 	case strings.Contains(ua, "Trident"):
 		return []string{"Trident", regexpFind(`Trident/([\d.]+)`, ua)}
 	case strings.Contains(ua, "EdgeHTML"):
 		return []string{"EdgeHTML", regexpFind(`EdgeHTML/([\d.]+)`, ua)}
-	case strings.Contains(ua, "Gecko"):
-		// Firefox uses Gecko. AppleWebKit-only UAs also mention Gecko in their
-		// compat token, so Gecko-only matches need a Firefox/Camino marker.
-		if strings.Contains(ua, "Firefox") || strings.Contains(ua, "Seamonkey") || strings.Contains(ua, "Camino") {
-			return []string{"Gecko", regexpFind(`rv:([\d.]+)`, ua)}
-		}
-		fallthrough
+	case strings.Contains(ua, "Gecko") &&
+		(strings.Contains(ua, "Firefox") || strings.Contains(ua, "Seamonkey") || strings.Contains(ua, "Camino")):
+		return []string{"Gecko", regexpFind(`rv:([\d.]+)`, ua)}
 	case strings.Contains(ua, "AppleWebKit"):
-		// Modern Blink-based browsers still report AppleWebKit/537.36; classify
-		// them as Blink to match ua-parser-js when Chrome/Edg/OPR token is
-		// present.
-		webkit := regexpFind(`AppleWebKit/([\d.]+)`, ua)
+		// Modern Blink browsers still report AppleWebKit/537.36; ua-parser-js
+		// classifies them as Blink with the Chrome version.
 		if strings.Contains(ua, "Chrome/") || strings.Contains(ua, "Edg/") || strings.Contains(ua, "OPR/") {
-			return []string{"Blink", webkit}
+			return []string{"Blink", regexpFind(`Chrome/([\d.]+)`, ua)}
 		}
-		return []string{"WebKit", webkit}
+		return []string{"WebKit", regexpFind(`AppleWebKit/([\d.]+)`, ua)}
 	case strings.Contains(ua, "Presto"):
 		return []string{"Presto", regexpFind(`Presto/([\d.]+)`, ua)}
 	}
-	return nil
+	return out
 }
 
 // ── device ─────────────────────────────────────────────────────────────────────
 
-// detectDevice returns [model, type, vendor]. Mirrors ua-parser-js getDevice()'s
-// {model, type, vendor}. Desktop browsers report only "/// " (all fields empty)
-// because ua-parser-js leaves the device object empty when the UA does not
-// include a recognizable device hint.
+// detectDevice returns [type, model, vendor]. Mirrors ua-parser-js getDevice()
+// {type, model, vendor}. A desktop UA leaves all three undefined → "//"; macOS
+// desktops are special — ua-parser-js reports {model:"Macintosh", vendor:"Apple"}
+// with an undefined type → "/Macintosh/Apple".
 func detectDevice(ua string) []string {
 	switch {
 	case strings.Contains(ua, "iPhone"):
-		return []string{"iPhone", "mobile", "Apple"}
+		return []string{"mobile", "iPhone", "Apple"}
 	case strings.Contains(ua, "iPad"):
-		return []string{"iPad", "tablet", "Apple"}
+		return []string{"tablet", "iPad", "Apple"}
 	case strings.Contains(ua, "iPod"):
-		return []string{"iPod", "mobile", "Apple"}
-	case strings.Contains(ua, "Mac OS X"):
-		// macOS desktops have no model — but ua-parser-js still leaves the
-		// device object empty. Return nil to match.
-		return nil
+		return []string{"mobile", "iPod", "Apple"}
 	case strings.Contains(ua, "Android"):
-		// Try to extract model from "(Linux; Android X; <model>)".
-		model := regexpFind(`Android [^;]+; ([^)]+)\)`, ua)
-		// Strip trailing build identifier ("Build/...").
-		if idx := strings.Index(model, " Build/"); idx >= 0 {
-			model = model[:idx]
-		}
+		model := extractAndroidModel(ua)
 		typ := "tablet"
 		if strings.Contains(ua, "Mobile") {
 			typ = "mobile"
 		}
-		vendor := guessAndroidVendor(model)
-		return []string{strings.TrimSpace(model), typ, vendor}
+		return []string{typ, model, guessAndroidVendor(model)}
 	case strings.Contains(ua, "Windows Phone"):
-		return []string{"Windows Phone", "mobile", "Microsoft"}
+		return []string{"mobile", "Windows Phone", "Microsoft"}
 	case strings.Contains(ua, "BlackBerry") || strings.Contains(ua, "BB10"):
-		return []string{"BlackBerry", "mobile", "BlackBerry"}
+		return []string{"mobile", "BlackBerry", "BlackBerry"}
+	case strings.Contains(ua, "Macintosh"):
+		// ua-parser-js: {type:undefined, model:"Macintosh", vendor:"Apple"}.
+		return []string{"", "Macintosh", "Apple"}
 	}
-	return nil
+	return []string{"", "", ""}
+}
+
+// extractAndroidModel pulls the model token out of "(Linux; Android X; <model>)".
+// ua-parser-js strips a "Build/..." suffix and a leading "SAMSUNG " manufacturer
+// token, and treats the bare "Mobile" form-factor token as no model.
+func extractAndroidModel(ua string) string {
+	model := strings.TrimSpace(regexpFind(`Android [^;]+;\s*([^;)]+)[;)]`, ua))
+	if idx := strings.Index(model, " Build/"); idx >= 0 {
+		model = model[:idx]
+	}
+	model = strings.TrimSpace(strings.TrimPrefix(model, "SAMSUNG "))
+	if model == "Mobile" || strings.HasPrefix(model, "rv:") {
+		return ""
+	}
+	return model
 }
 
 // guessAndroidVendor maps a model prefix to a likely vendor. ua-parser-js
@@ -233,40 +288,26 @@ func guessAndroidVendor(model string) string {
 
 // ── cpu ────────────────────────────────────────────────────────────────────────
 
-// detectCPU returns [architecture]. Mirrors ua-parser-js getCPU(): {architecture}.
-// Naming follows ua-parser-js conventions ("amd64", "ia32", "arm64", …).
+// detectCPU returns [architecture]. Mirrors ua-parser-js getCPU() {architecture}.
+// Note ua-parser-js does NOT infer amd64 from a bare "Intel Mac OS X" token, so
+// neither do we — a Mac Safari UA yields an empty architecture.
 func detectCPU(ua string) []string {
+	arch := ""
 	switch {
 	// arm64 must precede arm so "arm64" doesn't get classified as plain arm.
 	case strings.Contains(ua, "arm64") || strings.Contains(ua, "ARM64") || strings.Contains(ua, "aarch64"):
-		return []string{"arm64"}
+		arch = "arm64"
 	case strings.Contains(ua, "x86_64") || strings.Contains(ua, "x64") || strings.Contains(ua, "Win64") || strings.Contains(ua, "WOW64"):
-		return []string{"amd64"}
-	// macOS UAs say "Intel Mac OS X" rather than carrying an explicit x86_64
-	// token; ua-parser-js treats Intel-on-Mac as amd64 for parity with how the
-	// platform reports itself.
-	case strings.Contains(ua, "Intel Mac OS X"):
-		return []string{"amd64"}
+		arch = "amd64"
 	case strings.Contains(ua, "armv") || strings.Contains(ua, "arm;") || strings.Contains(ua, "ARM"):
-		return []string{"arm"}
+		arch = "arm"
 	case strings.Contains(ua, "i686") || strings.Contains(ua, "i386") || strings.Contains(ua, "ia32"):
-		return []string{"ia32"}
+		arch = "ia32"
 	}
-	return nil
+	return []string{arch}
 }
 
 // ── helpers ────────────────────────────────────────────────────────────────────
-
-// stringify mirrors TS `Object.values(obj).join('/')`. nil yields an empty
-// string; empty slots produce a trailing or interior slash, exactly as the JS
-// behaviour for undefined values that become the literal string "undefined" —
-// gox uses "" for undefined to keep downstream null-checks meaningful.
-func stringify(parts []string) string {
-	if len(parts) == 0 {
-		return ""
-	}
-	return strings.Join(parts, "/")
-}
 
 func regexpFind(pattern, ua string) string {
 	re := regexp.MustCompile(pattern)

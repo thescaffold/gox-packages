@@ -36,11 +36,14 @@ func (m *AuthMiddleware) Handle(ctx types.Context) error {
 		}
 	}
 
-	if !strings.HasPrefix(header, "Bearer ") {
+	// passport-jwt's fromAuthHeaderAsBearerToken matches the "bearer" scheme
+	// case-insensitively, so accept any capitalisation of the prefix.
+	const bearerPrefix = "bearer "
+	if len(header) < len(bearerPrefix) || !strings.EqualFold(header[:len(bearerPrefix)], bearerPrefix) {
 		return writeUnauthorized(ctx)
 	}
 
-	tokenStr := strings.TrimPrefix(header, "Bearer ")
+	tokenStr := strings.TrimSpace(header[len(bearerPrefix):])
 	claims, err := Verify(tokenStr, m.Secret)
 	if err != nil {
 		return writeUnauthorized(ctx)
