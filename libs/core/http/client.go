@@ -147,7 +147,11 @@ func (c *Client) do(method, rawURL string, body io.Reader, headers map[string]st
 	}
 	defer resp.Body.Close()
 
-	raw, _ := io.ReadAll(resp.Body)
+	// Cap response body size — without this, a misbehaving / hostile upstream
+	// could stream gigabytes into memory and OOM the process. 50 MiB is
+	// generous for normal JSON API responses while still bounded.
+	const maxResponseBody = 50 * 1024 * 1024
+	raw, _ := io.ReadAll(io.LimitReader(resp.Body, maxResponseBody))
 	var data any
 	if err := json.Unmarshal(raw, &data); err != nil {
 		data = string(raw)

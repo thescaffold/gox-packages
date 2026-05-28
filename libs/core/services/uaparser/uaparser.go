@@ -26,6 +26,7 @@ package uaparser
 import (
 	"regexp"
 	"strings"
+	"sync"
 )
 
 // Result mirrors TS UAParserService.parse() return shape — every field is the
@@ -309,8 +310,36 @@ func detectCPU(ua string) []string {
 
 // ── helpers ────────────────────────────────────────────────────────────────────
 
+// Pattern → compiled regex cache. Each unique pattern compiles exactly once
+// across the process — previously we recompiled per-request, which on a
+// busy UA-parsing endpoint burned measurable CPU and was the single biggest
+// hot path in the profile.
+var (
+	regexpCacheMu sync.RWMutex
+	regexpCache   = make(map[string]*regexp.Regexp)
+)
+
+func compileCached(pattern string) *regexp.Regexp {
+	regexpCacheMu.RLock()
+	re, ok := regexpCache[pattern]
+	regexpCacheMu.RUnlock()
+	if ok {
+		return re
+	}
+	regexpCacheMu.Lock()
+	defer regexpCacheMu.Unlock()
+	// Re-check after taking the write lock (another goroutine may have raced
+	// us in and populated the entry).
+	if re, ok = regexpCache[pattern]; ok {
+		return re
+	}
+	re = regexp.MustCompile(pattern)
+	regexpCache[pattern] = re
+	return re
+}
+
 func regexpFind(pattern, ua string) string {
-	re := regexp.MustCompile(pattern)
+	re := compileCached(pattern)
 	m := re.FindStringSubmatch(ua)
 	if len(m) > 1 {
 		return m[1]

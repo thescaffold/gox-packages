@@ -25,7 +25,11 @@ func Sign(claims map[string]any, secret string, expiry time.Duration) (string, e
 // Returns an error if the token is invalid, expired, or uses a different algorithm.
 func Verify(tokenStr, secret string) (map[string]any, error) {
 	token, err := jwt.Parse(tokenStr, func(t *jwt.Token) (any, error) {
-		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+		// Pin to HS256 specifically — accepting any *SigningMethodHMAC let
+		// HS384 / HS512 tokens through too. The corresponding Sign() above
+		// only emits HS256, so anything else is a downgrade / confusion
+		// attempt regardless of provenance.
+		if t.Method != jwt.SigningMethodHS256 {
 			return nil, errors.New("unexpected signing method")
 		}
 		return []byte(secret), nil

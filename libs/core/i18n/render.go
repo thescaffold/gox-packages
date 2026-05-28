@@ -51,12 +51,18 @@ var RenderHelpers = map[string]any{
 	}),
 }
 
+// Compiled once at package init — these patterns ran via regexp.MustCompile
+// on every i18n template render before, which is one of the noisier hot paths.
+var (
+	xSanitizerNonAlnum = regexp.MustCompile(`[^A-Za-z0-9]`)
+	xSanitizerLeading  = regexp.MustCompile(`^[0-9]+`)
+)
+
 // xSanitizer strips non-alphanumeric characters and lowercases the result.
 func xSanitizer(text string) string {
-	re := regexp.MustCompile(`[^A-Za-z0-9]`)
-	result := strings.ToLower(re.ReplaceAllString(text, ""))
+	result := strings.ToLower(xSanitizerNonAlnum.ReplaceAllString(text, ""))
 	// remove leading digits
-	return regexp.MustCompile(`^[0-9]+`).ReplaceAllString(result, "")
+	return xSanitizerLeading.ReplaceAllString(result, "")
 }
 
 // xAlphanum generates a random alphanumeric string of the given length (parsed from text).
