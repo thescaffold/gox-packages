@@ -12,4 +12,4 @@ use (
 
 // Workspace-only overrides so local development resolves to the in-tree copies
 // before tags exist. These are not used by consumers of the published modules.
-replace github.com/thescaffold/gox-packages/libs/core v0.0.5 => ./libs/core
+replace github.com/thescaffold/gox-packages/libs/core v0.0.6 => ./libs/core
