@@ -4,7 +4,7 @@ go 1.25.3
 
 require (
 	github.com/awesome-goose/goose v0.0.6
-	github.com/thescaffold/gox-packages/libs/core v0.0.6
+	github.com/thescaffold/gox-packages/libs/core v0.0.7
 )
 
 require (
