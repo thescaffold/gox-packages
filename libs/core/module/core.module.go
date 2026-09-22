@@ -72,6 +72,29 @@ func New(cfg CoreConfig) *CoreModule {
 
 func (m *CoreModule) Imports() []types.Module { return nil }
 
+// Configure registers the configured (or default in-memory) cache backend as
+// a container binding under the services.CacheBackend interface itself.
+// Declarations() below also hands the same value out for registry-based
+// lookups (Registry.Get/Resolve) within CoreModule's own declarations, but
+// that never satisfies a plain inject:"" services.CacheBackend field on a
+// DECLARED struct elsewhere in the tree — declaration creation resolves
+// inject:"" fields through the container's own bindings map (core/container.go's
+// create()), which only ever sees what's explicitly Register-ed here, not
+// what's merely Declared. Without this, any module that declares a struct
+// with such a field (gox-apps/libs/capital's and notification's AppService
+// both do) fails to hydrate with CANNOT_CREATE_INTERFACE_FIELD the moment
+// its declaration is created, regardless of whether it imports CoreModule
+// directly or transitively.
+func (m *CoreModule) Configure(container types.Container) error {
+	return container.Register(
+		func() services.CacheBackend {
+			return m.cfg.Cache
+		},
+		"",
+		true,
+	)
+}
+
 func (m *CoreModule) Declarations() []any {
 	bus := events.NewBus()
 	tracker := events.NewTrackerService(bus)
