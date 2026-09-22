@@ -9,7 +9,7 @@ Go library for in-memory feature flag management.
 ## Usage
 
 ```go
-import "github.com/thescaffold/gox-packages-flags"
+import "github.com/thescaffold/gox-packages/libs/flags"
 
 flags.Register(flags.FlagsConfig{
     Env: "production",

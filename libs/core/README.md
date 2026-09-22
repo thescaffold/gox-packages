@@ -27,7 +27,7 @@ Go library of cross-cutting concerns for Goose-based microservices.
 ## Quick Start
 
 ```go
-import "github.com/thescaffold/gox-packages-core/module"
+import "github.com/thescaffold/gox-packages/libs/core/module"
 
 // In your AppModule.Imports():
 module.New(module.CoreConfig{
@@ -38,7 +38,7 @@ module.New(module.CoreConfig{
 ## Auth Middleware
 
 ```go
-import "github.com/thescaffold/gox-packages-core/auth"
+import "github.com/thescaffold/gox-packages/libs/core/auth"
 
 middleware := &auth.AuthMiddleware{Secret: os.Getenv("JWT_SECRET")}
 // Attach to routes that require authentication
@@ -47,7 +47,7 @@ middleware := &auth.AuthMiddleware{Secret: os.Getenv("JWT_SECRET")}
 ## CRUD Resource
 
 ```go
-import "github.com/thescaffold/gox-packages-core/crud"
+import "github.com/thescaffold/gox-packages/libs/core/crud"
 
 // CrudResource[MyEntity, CreateDto, UpdateDto] implements
 // Index, Show, Create, Update, Destroy automatically
@@ -57,7 +57,7 @@ type MyController = crud.CrudResource[MyEntity, CreateDto, UpdateDto]
 ## Image Service
 
 ```go
-import "github.com/thescaffold/gox-packages-core/image"
+import "github.com/thescaffold/gox-packages/libs/core/image"
 
 svc := &image.Service{}
 svg := svc.New(image.Options{

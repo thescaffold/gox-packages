@@ -9,7 +9,7 @@ Go library for structured analytics event tracking (identify, track, message).
 ## Usage
 
 ```go
-import "github.com/thescaffold/gox-packages-polylog"
+import "github.com/thescaffold/gox-packages/libs/polylog"
 
 polylog.Register(polylog.PolylogConfig{
     AppName: "my-service",

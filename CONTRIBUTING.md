@@ -2,7 +2,7 @@
 
 ## Adding a new package
 
-1. Create `libs/<name>/go.mod` with module path `github.com/thescaffold/gox-packages-<name>`.
+1. Create `libs/<name>/go.mod` with module path `github.com/thescaffold/gox-packages/libs/<name>`.
 2. Add the module path to `go.work`.
 3. Add a README at `libs/<name>/README.md`.
 4. Add the package to the CI matrix in `.github/workflows/ci.yml`.
@@ -15,11 +15,15 @@
 
 ## Publishing a release
 
-Tag releases using the format `<package>/v<semver>`:
+Tag releases using the format `libs/<package>/v<semver>` — the nested-module
+form Go requires for a module that isn't at the repo root. A bare
+`<package>/v<semver>` tag addresses the repo-root module (which doesn't
+exist here) instead, and produces a confusing "unknown revision"/module
+lookup error unrelated to the actual tag:
 
 ```bash
-git tag core/v1.1.0
-git push origin core/v1.1.0
+git tag libs/core/v1.1.0
+git push origin libs/core/v1.1.0
 ```
 
 The publish workflow will build, test, and create a GitHub Release automatically.
