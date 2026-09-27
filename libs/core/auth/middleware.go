@@ -29,12 +29,7 @@ var errUnauthorized = errors.New("unauthorized")
 var _ types.Middleware = (*AuthMiddleware)(nil)
 
 func (m *AuthMiddleware) Handle(ctx types.Context) error {
-	header := ""
-	if headers := ctx.Request().Headers(); headers != nil {
-		if vs, ok := headers["authorization"]; ok && len(vs) > 0 {
-			header = vs[0]
-		}
-	}
+	header := headerValue(ctx.Request().Headers(), "authorization")
 
 	// passport-jwt's fromAuthHeaderAsBearerToken matches the "bearer" scheme
 	// case-insensitively, so accept any capitalisation of the prefix.
@@ -62,6 +57,22 @@ func GetClaims(ctx types.Context) map[string]any {
 	}
 	claims, _ := v.(map[string]any)
 	return claims
+}
+
+// headerValue looks up name case-insensitively in headers. Real HTTP
+// platforms (net/http-backed — platforms/api, /web, /spa) always store
+// header keys in their canonical form (textproto.CanonicalMIMEHeaderKey,
+// e.g. "Authorization"), but this must also tolerate whatever casing a
+// test's mock context or another platform (cli, etc.) happens to use — a
+// straight map lookup on one fixed casing missed real requests entirely
+// (see TestAuthMiddleware_CanonicalHeaderCasing_StoresClaims).
+func headerValue(headers map[string][]string, name string) string {
+	for k, vs := range headers {
+		if strings.EqualFold(k, name) && len(vs) > 0 {
+			return vs[0]
+		}
+	}
+	return ""
 }
 
 func writeUnauthorized(ctx types.Context) error {

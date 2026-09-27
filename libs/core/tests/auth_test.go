@@ -126,6 +126,31 @@ func (s *AuthSuite) TestAuthMiddleware_ValidToken_StoresClaims() {
 	s.T.Expect(claims["userId"]).ToEqual("u1")
 }
 
+// TestAuthMiddleware_CanonicalHeaderCasing_StoresClaims reproduces a real
+// production bug found while wiring identity/app/auth's requireUser()
+// middleware for PLAN M0-27a: Handle looks up headers["authorization"]
+// (all-lowercase) directly in the map, but goose's real HTTP-backed
+// platforms (platforms/api/request.go's Headers(), which returns Go's
+// stdlib http.Header) always store header keys in their canonical form —
+// "Authorization" for this one, per textproto.CanonicalMIMEHeaderKey — so a
+// real `Authorization: Bearer <token>` request header, however a client
+// sends it, is stored under the capitalized key and the lowercase map
+// lookup misses it every time. Every existing test above only exercises
+// this via MockRequest.WithHeader("authorization", ...), which stores keys
+// verbatim with no canonicalization — that's why they all pass despite the
+// live bug; they never present headers the way a real HTTP server does.
+func (s *AuthSuite) TestAuthMiddleware_CanonicalHeaderCasing_StoresClaims() {
+	token, _ := auth.Sign(map[string]any{"userId": "u1"}, testSecret, time.Hour)
+	mw := &auth.AuthMiddleware{Secret: testSecret}
+	ctx := test.NewMockContext()
+	ctx.MockRequest().WithHeader("Authorization", "Bearer "+token)
+	err := mw.Handle(ctx)
+	s.T.Expect(err).ToBeNil()
+	claims := auth.GetClaims(ctx)
+	s.T.Expect(claims == nil).ToEqual(false)
+	s.T.Expect(claims["userId"]).ToEqual("u1")
+}
+
 func (s *AuthSuite) TestAuthMiddleware_MissingHeader_Returns401() {
 	mw := &auth.AuthMiddleware{Secret: testSecret}
 	ctx := test.NewMockContext()
