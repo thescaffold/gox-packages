@@ -2,6 +2,7 @@ package tests
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	test "github.com/awesome-goose/goose/testing"
@@ -60,6 +61,122 @@ func (s *SecuritySuite) TestEncrypt_Nondeterministic() {
 	b, _ := security.Encrypt("same text", testKey)
 	// IV is random so ciphertexts differ
 	s.T.Expect(a).Not().ToEqual(b)
+}
+
+// EncryptGCM/DecryptGCM (PLAN M1-01, TRD U-S1): core/security's only
+// encryption was AES-256-CBC with no authentication tag — malleable
+// ciphertext, unacceptable for the GitHub/GitLab tokens and kubeconfigs
+// Origine stores. These add an authenticated, versioned envelope alongside
+// it (Encrypt/Decrypt keep working — old ciphertext must still decrypt).
+
+func (s *SecuritySuite) TestEncryptGCM_DecryptGCM_RoundTrip() {
+	plaintext := "a github access token"
+	ct, err := security.EncryptGCM(plaintext, testKey)
+	s.T.Expect(err).ToBeNil()
+	s.T.Expect(ct).Not().ToEqual(plaintext)
+
+	pt, err := security.DecryptGCM(ct, testKey)
+	s.T.Expect(err).ToBeNil()
+	s.T.Expect(pt).ToEqual(plaintext)
+}
+
+func (s *SecuritySuite) TestEncryptGCM_EmptyString() {
+	ct, err := security.EncryptGCM("", testKey)
+	s.T.Expect(err).ToBeNil()
+	s.T.Expect(ct).ToEqual("")
+}
+
+func (s *SecuritySuite) TestEncryptGCM_Nondeterministic() {
+	a, _ := security.EncryptGCM("same text", testKey)
+	b, _ := security.EncryptGCM("same text", testKey)
+	s.T.Expect(a).Not().ToEqual(b)
+}
+
+func (s *SecuritySuite) TestEncryptGCM_IsVersioned() {
+	ct, _ := security.EncryptGCM("hello", testKey)
+	s.T.Expect(strings.HasPrefix(ct, "v1:")).ToEqual(true)
+	s.T.Expect(security.IsGCMEnvelope(ct)).ToEqual(true)
+}
+
+// TestDecryptGCM_TamperDetection is the actual point of moving to GCM: CBC
+// has no authentication tag, so a flipped ciphertext byte just decrypts to
+// garbage silently. GCM must refuse it outright.
+func (s *SecuritySuite) TestDecryptGCM_TamperDetection() {
+	ct, err := security.EncryptGCM("do not modify me", testKey)
+	s.T.Expect(err).ToBeNil()
+
+	parts := strings.Split(ct, ":")
+	s.T.Expect(len(parts)).ToEqual(3)
+	// Flip a hex nibble deep in the ciphertext/tag portion.
+	tampered := parts[0] + ":" + parts[1] + ":" + tamperHex(parts[2])
+
+	_, err = security.DecryptGCM(tampered, testKey)
+	s.T.Expect(err).Not().ToBeNil()
+}
+
+func (s *SecuritySuite) TestDecryptGCM_RejectsUnversionedInput() {
+	// A legacy CBC ciphertext (no "v1:" prefix) must be refused by DecryptGCM
+	// outright, not misparsed.
+	legacy, _ := security.Encrypt("legacy value", testKey)
+	_, err := security.DecryptGCM(legacy, testKey)
+	s.T.Expect(err).Not().ToBeNil()
+}
+
+// TestDecryptAny_HandlesBothFormats is U-S1's "old ciphertext still
+// decrypts" requirement made concrete: a caller reading a column that may
+// hold either format shouldn't need to know which one a given row used.
+func (s *SecuritySuite) TestDecryptAny_HandlesBothFormats() {
+	legacyCt, err := security.Encrypt("old value", testKey)
+	s.T.Expect(err).ToBeNil()
+	legacyPt, err := security.DecryptAny(legacyCt, testKey)
+	s.T.Expect(err).ToBeNil()
+	s.T.Expect(legacyPt).ToEqual("old value")
+
+	newCt, err := security.EncryptGCM("new value", testKey)
+	s.T.Expect(err).ToBeNil()
+	newPt, err := security.DecryptAny(newCt, testKey)
+	s.T.Expect(err).ToBeNil()
+	s.T.Expect(newPt).ToEqual("new value")
+}
+
+// TestReEncryptToGCM_MigrationHelper: PLAN M1-01's "migration helper" —
+// upgrades a legacy CBC value to the versioned GCM envelope, and is a no-op
+// (safe to call unconditionally on every row) on a value already migrated.
+func (s *SecuritySuite) TestReEncryptToGCM_MigrationHelper() {
+	legacyCt, err := security.Encrypt("migrate me", testKey)
+	s.T.Expect(err).ToBeNil()
+
+	migrated, err := security.ReEncryptToGCM(legacyCt, testKey)
+	s.T.Expect(err).ToBeNil()
+	s.T.Expect(security.IsGCMEnvelope(migrated)).ToEqual(true)
+
+	pt, err := security.DecryptGCM(migrated, testKey)
+	s.T.Expect(err).ToBeNil()
+	s.T.Expect(pt).ToEqual("migrate me")
+
+	// Idempotent: re-running on an already-migrated value returns it as-is.
+	again, err := security.ReEncryptToGCM(migrated, testKey)
+	s.T.Expect(err).ToBeNil()
+	s.T.Expect(again).ToEqual(migrated)
+}
+
+func (s *SecuritySuite) TestReEncryptToGCM_EmptyString() {
+	migrated, err := security.ReEncryptToGCM("", testKey)
+	s.T.Expect(err).ToBeNil()
+	s.T.Expect(migrated).ToEqual("")
+}
+
+// tamperHex flips one hex nibble roughly in the middle of s, corrupting the
+// underlying byte without producing invalid hex.
+func tamperHex(s string) string {
+	i := len(s) / 2
+	b := []byte(s)
+	if b[i] == 'f' {
+		b[i] = 'e'
+	} else {
+		b[i] = 'f'
+	}
+	return string(b)
 }
 
 func (s *SecuritySuite) TestHmac_Verify() {

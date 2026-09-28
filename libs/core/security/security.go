@@ -112,6 +112,112 @@ func Decrypt(ciphertext, key string) (string, error) {
 	return string(unpadded), nil
 }
 
+// gcmVersion prefixes every EncryptGCM envelope. It's what lets DecryptAny
+// and ReEncryptToGCM tell a versioned GCM ciphertext apart from legacy
+// Encrypt's unversioned AES-CBC output, which never starts with "v1:" (it
+// starts directly with a hex IV).
+const gcmVersion = "v1"
+
+// EncryptGCM encrypts text with AES-256-GCM (authenticated — unlike Encrypt's
+// CBC, a modified ciphertext or tag is rejected, not silently decrypted to
+// garbage) using key (32 bytes). Output is a versioned envelope:
+// "v1:<nonce_hex>:<sealed_hex>" (PLAN M1-01, TRD U-S1). Encrypt/Decrypt are
+// unchanged and still work — this is additive, not a replacement.
+func EncryptGCM(text, key string) (string, error) {
+	if text == "" {
+		return text, nil
+	}
+	block, err := aes.NewCipher([]byte(key))
+	if err != nil {
+		return "", fmt.Errorf("encryptGCM: %w", err)
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", fmt.Errorf("encryptGCM: %w", err)
+	}
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		return "", fmt.Errorf("encryptGCM nonce: %w", err)
+	}
+	sealed := gcm.Seal(nil, nonce, []byte(text), nil)
+	return gcmVersion + ":" + hex.EncodeToString(nonce) + ":" + hex.EncodeToString(sealed), nil
+}
+
+// DecryptGCM decrypts and authenticates a ciphertext produced by EncryptGCM.
+// A modified ciphertext, a modified/truncated auth tag, or an unversioned
+// (legacy CBC) input are all rejected with an error — never silently
+// returned as garbage plaintext.
+func DecryptGCM(ciphertext, key string) (string, error) {
+	if ciphertext == "" {
+		return ciphertext, nil
+	}
+	parts := strings.SplitN(ciphertext, ":", 3)
+	if len(parts) != 3 || parts[0] != gcmVersion {
+		return "", errors.New("decryptGCM: not a v1 envelope")
+	}
+	nonce, err := hex.DecodeString(parts[1])
+	if err != nil {
+		return "", fmt.Errorf("decryptGCM nonce: %w", err)
+	}
+	sealed, err := hex.DecodeString(parts[2])
+	if err != nil {
+		return "", fmt.Errorf("decryptGCM ciphertext: %w", err)
+	}
+	block, err := aes.NewCipher([]byte(key))
+	if err != nil {
+		return "", fmt.Errorf("decryptGCM: %w", err)
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", fmt.Errorf("decryptGCM: %w", err)
+	}
+	if len(nonce) != gcm.NonceSize() {
+		return "", errors.New("decryptGCM: invalid nonce size")
+	}
+	plain, err := gcm.Open(nil, nonce, sealed, nil)
+	if err != nil {
+		return "", fmt.Errorf("decryptGCM: authentication failed: %w", err)
+	}
+	return string(plain), nil
+}
+
+// IsGCMEnvelope reports whether ciphertext is a versioned EncryptGCM output
+// rather than legacy Encrypt's unversioned AES-CBC output.
+func IsGCMEnvelope(ciphertext string) bool {
+	return strings.HasPrefix(ciphertext, gcmVersion+":")
+}
+
+// DecryptAny decrypts a value produced by either EncryptGCM (versioned) or
+// the legacy Encrypt (unversioned AES-CBC), dispatching on format — so a
+// caller reading a column that may hold rows written under either scheme
+// doesn't need to know which one a given row used (PLAN M1-01's "old
+// ciphertext still decrypts").
+func DecryptAny(ciphertext, key string) (string, error) {
+	if ciphertext == "" {
+		return ciphertext, nil
+	}
+	if IsGCMEnvelope(ciphertext) {
+		return DecryptGCM(ciphertext, key)
+	}
+	return Decrypt(ciphertext, key)
+}
+
+// ReEncryptToGCM is PLAN M1-01's migration helper: given a value that may be
+// in either format, returns it re-encrypted as a versioned GCM envelope,
+// ready to write back. Idempotent — a value already in GCM format is
+// returned unchanged — so it's safe to call unconditionally on every row a
+// migration touches rather than needing to check the format first.
+func ReEncryptToGCM(ciphertext, key string) (string, error) {
+	if ciphertext == "" || IsGCMEnvelope(ciphertext) {
+		return ciphertext, nil
+	}
+	plain, err := Decrypt(ciphertext, key)
+	if err != nil {
+		return "", fmt.Errorf("reEncryptToGCM decrypt: %w", err)
+	}
+	return EncryptGCM(plain, key)
+}
+
 // GenerateHmac signs payload (JSON-marshalled with sorted keys) using algo and key.
 // Supported algos: "sha1", "sha256" (default), "sha384", "sha512" — matches Node's
 // crypto.createHmac surface that the TS QuickHttpService relies on.
