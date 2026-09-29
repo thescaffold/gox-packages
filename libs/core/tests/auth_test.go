@@ -178,6 +178,76 @@ func (s *AuthSuite) TestAuthMiddleware_ExpiredToken_Returns401() {
 	s.T.Expect(ctx.MockResponse().StatusCode()).ToEqual(401)
 }
 
+// ── FromClaims ─────────────────────────────────────────────────────────────────
+
+// TestFromClaims_PopulatesFullContextFromVerifiedClaims is PLAN (Origine)
+// M1-02's own literal repro turned into a test: a token carrying
+// workspaceId/roles/permissions must produce an NTXContext whose Workspace
+// map matches — the exact shape ctx.Workspace["id"] lookups throughout
+// crud.CrudResource's BeforeCreate hooks already expect.
+func (s *AuthSuite) TestFromClaims_PopulatesFullContextFromVerifiedClaims() {
+	token, _ := auth.Sign(map[string]any{
+		"sub": "u1", "clientId": "c1", "workspaceId": "ws1",
+		"roles": []string{"owner"}, "permissions": []string{"apps:systems:*"},
+	}, testSecret, time.Hour)
+
+	ctx := test.NewMockContext()
+	ctx.MockRequest().WithHeader("Authorization", "Bearer "+token)
+
+	authMw := &auth.AuthMiddleware{Secret: testSecret}
+	s.T.Expect(authMw.Handle(ctx)).ToBeNil()
+
+	fromClaims := &auth.FromClaims{}
+	s.T.Expect(fromClaims.Handle(ctx)).ToBeNil()
+
+	ntx := ntxctx.Get(ctx)
+	s.T.Expect(ntx.UserID).ToEqual("u1")
+	s.T.Expect(ntx.ClientID).ToEqual("c1")
+	s.T.Expect(ntx.WorkspaceID).ToEqual("ws1")
+	id, ok := ntx.Workspace["id"].(string)
+	s.T.Expect(ok).ToEqual(true)
+	s.T.Expect(id).ToEqual("ws1")
+	s.T.Expect(len(ntx.Roles)).ToEqual(1)
+	s.T.Expect(len(ntx.Permissions)).ToEqual(1)
+}
+
+// TestFromClaims_NoAuthMiddlewareRun_ProducesEmptyContext is the specific
+// regression this exists to prevent understood in reverse: with no verified
+// claims at all (AuthMiddleware never ran, or the request had none),
+// FromClaims must set an empty context — never fall back to reading
+// anything from the raw request the way ntxctx.Middleware does.
+func (s *AuthSuite) TestFromClaims_NoAuthMiddlewareRun_ProducesEmptyContext() {
+	ctx := test.NewMockContext()
+	ctx.MockRequest().WithHeader("x-ntx-workspace-id", "attacker-chosen-workspace")
+
+	fromClaims := &auth.FromClaims{}
+	s.T.Expect(fromClaims.Handle(ctx)).ToBeNil()
+
+	ntx := ntxctx.Get(ctx)
+	s.T.Expect(ntx.WorkspaceID).ToEqual("")
+	s.T.Expect(ntx.Workspace == nil).ToEqual(true)
+}
+
+// TestFromClaims_ClaimsWithNoWorkspace_LeavesWorkspaceEmpty checks a token
+// that never had a workspace selected (an edge case identity's Login must
+// stop producing once M1-02's other half lands, but FromClaims itself must
+// be defensive regardless): no workspaceId claim means no Workspace map, not
+// an empty-string id that would round-trip as "true" through a bare
+// ctx.Workspace != nil check elsewhere.
+func (s *AuthSuite) TestFromClaims_ClaimsWithNoWorkspace_LeavesWorkspaceEmpty() {
+	token, _ := auth.Sign(map[string]any{"sub": "u1", "clientId": "c1"}, testSecret, time.Hour)
+	ctx := test.NewMockContext()
+	ctx.MockRequest().WithHeader("Authorization", "Bearer "+token)
+
+	authMw := &auth.AuthMiddleware{Secret: testSecret}
+	s.T.Expect(authMw.Handle(ctx)).ToBeNil()
+	fromClaims := &auth.FromClaims{}
+	s.T.Expect(fromClaims.Handle(ctx)).ToBeNil()
+
+	ntx := ntxctx.Get(ctx)
+	s.T.Expect(ntx.Workspace == nil).ToEqual(true)
+}
+
 // ── StatusGuard ────────────────────────────────────────────────────────────────
 
 // TestStatusGuard_NilPlatform_AllowsThrough mirrors TS:
