@@ -124,6 +124,11 @@ func (r *CrudResource[E, C, U]) List(dto *ListDto) types.Output {
 	}
 
 	where, args := conditionsToSQL(f.Conditions, f.DateFrom, f.DateTo)
+	where, args, ok := r.scopeWhere(where, args, ctx)
+	if !ok {
+		return response.Paginated([]E{}, f.Page, f.PerPage, 0,
+			r.title(ctx), r.tr("packages.core.crud.get.all.success", ctx))
+	}
 	total, err := r.entity.Count(where, args...)
 	if err != nil {
 		return response.InternalServerError(r.cfg.Name, dbMsg(err))
@@ -154,7 +159,12 @@ func (r *CrudResource[E, C, U]) Get(dto *GetDto) types.Output {
 
 	_ = r.runHook(BeforeGet, id, ctx)
 
-	entity, err := r.entity.First("id = ?", id)
+	where, args, ok := r.scopeWhere("id = ?", []any{id}, ctx)
+	if !ok {
+		return response.NotFound(r.title(ctx),
+			r.tr("packages.core.crud.get.one.error.not-found", ctx))
+	}
+	entity, err := r.entity.First(where, args...)
 	if err != nil || entity == nil {
 		return response.NotFound(r.title(ctx),
 			r.tr("packages.core.crud.get.one.error.not-found", ctx))
@@ -193,7 +203,12 @@ func (r *CrudResource[E, C, U]) Update(dto *UpdateDto[U]) types.Output {
 		payload = *m
 	}
 
-	existing, err := r.entity.First("id = ?", id)
+	where, whereArgs, ok := r.scopeWhere("id = ?", []any{id}, ctx)
+	if !ok {
+		return response.BadRequest(r.title(ctx),
+			r.tr("packages.core.crud.patch.update.error.not-found", ctx))
+	}
+	existing, err := r.entity.First(where, whereArgs...)
 	if err != nil || existing == nil {
 		return response.BadRequest(r.title(ctx),
 			r.tr("packages.core.crud.patch.update.error.not-found", ctx))
@@ -231,7 +246,12 @@ func (r *CrudResource[E, C, U]) Delete(dto *DeleteDto) types.Output {
 	ctx := dto.Ctx
 	id := dto.ID
 
-	entity, err := r.entity.First("id = ?", id)
+	where, args, ok := r.scopeWhere("id = ?", []any{id}, ctx)
+	if !ok {
+		return response.NotFound(r.title(ctx),
+			r.tr("packages.core.crud.delete.remove.error.not-found", ctx))
+	}
+	entity, err := r.entity.First(where, args...)
 	if err != nil || entity == nil {
 		return response.NotFound(r.title(ctx),
 			r.tr("packages.core.crud.delete.remove.error.not-found", ctx))
@@ -355,7 +375,12 @@ func (r *CrudResource[E, C, U]) UpdatePut(dto *UpdatePutDto[C]) types.Output {
 		payload = *m
 	}
 
-	existing, err := r.entity.First("id = ?", id)
+	where, whereArgs, ok := r.scopeWhere("id = ?", []any{id}, ctx)
+	if !ok {
+		return response.BadRequest(r.title(ctx),
+			r.tr("packages.core.crud.put.update.error.not-found", ctx))
+	}
+	existing, err := r.entity.First(where, whereArgs...)
 	if err != nil || existing == nil {
 		return response.BadRequest(r.title(ctx),
 			r.tr("packages.core.crud.put.update.error.not-found", ctx))
@@ -383,6 +408,11 @@ func (r *CrudResource[E, C, U]) Metrics(dto *ListDto) types.Output {
 	ctx := dto.Ctx
 	f := filter.MakeFilter(dto.Queries, r.cfg.Searchable)
 	where, args := conditionsToSQL(f.Conditions, f.DateFrom, f.DateTo)
+	where, args, ok := r.scopeWhere(where, args, ctx)
+	if !ok {
+		return response.Success(map[string]any{"entities": int64(0)}, r.title(ctx),
+			r.tr("packages.core.crud.get.metrics.success", ctx), nil)
+	}
 	count, err := r.entity.Count(where, args...)
 	if err != nil {
 		return response.InternalServerError(r.cfg.Name, dbMsg(err))
@@ -400,7 +430,12 @@ func (r *CrudResource[E, C, U]) Metrics(dto *ListDto) types.Output {
 // wiring still respond rather than 500.
 func (r *CrudResource[E, C, U]) FindRelatives(dto *GetDto) types.Output {
 	ctx := dto.Ctx
-	entity, err := r.entity.First("id = ?", dto.ID)
+	where, args, ok := r.scopeWhere("id = ?", []any{dto.ID}, ctx)
+	if !ok {
+		return response.NotFound(r.title(ctx),
+			r.tr("packages.core.crud.get.relative.error.not-found", ctx))
+	}
+	entity, err := r.entity.First(where, args...)
 	if err != nil || entity == nil {
 		return response.NotFound(r.title(ctx),
 			r.tr("packages.core.crud.get.relative.error.not-found", ctx))
@@ -428,6 +463,11 @@ func (r *CrudResource[E, C, U]) FindByType(dto *FindByTypeDto) types.Output {
 	ctx := dto.Ctx
 	f := filter.MakeFilter(dto.Queries, r.cfg.Searchable)
 	where, args := conditionsToSQL(f.Conditions, f.DateFrom, f.DateTo)
+	where, args, ok := r.scopeWhere(where, args, ctx)
+	if !ok {
+		return response.NotFound(r.title(ctx),
+			r.tr("packages.core.crud.get.find.error.not-found", ctx))
+	}
 
 	var entity *E
 	var err error
@@ -462,6 +502,11 @@ func (r *CrudResource[E, C, U]) FindByIds(dto *FindByIdsDto) types.Output {
 		args[i] = id
 	}
 	where := fmt.Sprintf("id IN (%s)", strings.Join(placeholders, ","))
+	where, args, ok := r.scopeWhere(where, args, ctx)
+	if !ok {
+		return response.Paginated([]E{}, f.Page, f.PerPage, 0,
+			r.title(ctx), r.tr("packages.core.crud.get.all.success", ctx))
+	}
 
 	total, err := r.entity.Count(where, args...)
 	if err != nil {
@@ -605,6 +650,39 @@ func (r *CrudResource[E, C, U]) runUniqueChecks(constraints []map[string]any, ex
 		}
 	}
 	return nil
+}
+
+// workspaceColumn returns Config.WorkspaceColumn, defaulting to "workspace_id".
+func (r *CrudResource[E, C, U]) workspaceColumn() string {
+	if r.cfg.WorkspaceColumn != "" {
+		return r.cfg.WorkspaceColumn
+	}
+	return "workspace_id"
+}
+
+// scopeWhere ANDs a WorkspaceScoped constraint onto an existing WHERE clause
+// (TRD §7.1 U-S11). When Config.WorkspaceScoped is false, it returns where/args
+// unchanged with ok=true — every non-opted-in resource behaves exactly as
+// before this fix. When true, it requires a non-empty ctx.WorkspaceID and ANDs
+// in "<column> = ?"; ok=false means the caller has no usable workspace (an
+// unauthenticated request, or a mount with no tenant middleware) and the
+// caller MUST fail closed — return empty/not-found — rather than run the
+// original, now-unsafe, unscoped query.
+func (r *CrudResource[E, C, U]) scopeWhere(where string, args []any, ctx ntxctx.NTXContext) (string, []any, bool) {
+	if !r.cfg.WorkspaceScoped {
+		return where, args, true
+	}
+	if ctx.WorkspaceID == "" {
+		return where, args, false
+	}
+	clause := r.workspaceColumn() + " = ?"
+	if where != "" {
+		where = "(" + where + ") AND " + clause
+	} else {
+		where = clause
+	}
+	args = append(args, ctx.WorkspaceID)
+	return where, args, true
 }
 
 // conditionsToSQL converts filter.Result conditions + date range to a SQL WHERE + args.

@@ -111,4 +111,32 @@ type Config[E, C, U any] struct {
 	// When both Morphs[k] and MorphsCtx[k] are set, Morphs runs first and its
 	// result is fed to MorphsCtx via HookEvent.Entity / HookEvent.DTO.
 	MorphsCtx map[string]MorphCtxFn
+
+	// WorkspaceScoped, when true, confines List/Get/Update/Delete/Metrics/
+	// FindByType/FindByIds/FindRelatives/UpdatePut to rows whose
+	// WorkspaceColumn matches the caller's ctx.WorkspaceID (TRD §7.1 U-S11).
+	//
+	// Before this flag existed, only Create's own BeforeCreate morph ever
+	// consulted ctx.Workspace at all (a per-controller convention, not
+	// anything CrudResource enforced) — every read/write-by-id path ran a
+	// bare "id = ?" query, so a token genuinely scoped to workspace A could
+	// list, fetch and overwrite workspace B's rows outright. Confirmed live
+	// against a real boot before this fix existed.
+	//
+	// Opt-in per resource (default false) so a genuinely global entity
+	// (one with no workspace column, or one every workspace is meant to
+	// share) isn't broken by a filter it was never designed for.
+	//
+	// Fails closed: when WorkspaceScoped is true but the caller's
+	// ctx.WorkspaceID is empty (no tenant middleware on the mount, or an
+	// unauthenticated request that reached this far), List/Metrics/
+	// FindByIds return empty rather than every row, and Get/Update/Delete/
+	// FindByType/FindRelatives/UpdatePut report not-found rather than
+	// running an unscoped query.
+	WorkspaceScoped bool
+
+	// WorkspaceColumn is the SQL column WorkspaceScoped filters on. Defaults
+	// to "workspace_id" (every entity built so far uses that exact column
+	// name) when left empty.
+	WorkspaceColumn string
 }
