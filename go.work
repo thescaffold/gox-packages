@@ -4,6 +4,7 @@ go 1.25.3
 use ../../awesome-goose/goose
 
 use (
+	./libs/ai
 	./libs/blobs
 	./libs/core
 	./libs/flags
