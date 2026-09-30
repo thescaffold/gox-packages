@@ -26,6 +26,8 @@ type ChatResponse struct {
 	Message    Message    `json:"message"`
 	StopReason StopReason `json:"stopReason"`
 	Usage      Usage      `json:"usage"`
+	// Provider is the driver that answered ("anthropic"), for metering.
+	Provider string `json:"provider,omitempty"`
 	// Model is the model that actually answered (it can differ from the one
 	// requested after a fallback).
 	Model string `json:"model"`

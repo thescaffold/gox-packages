@@ -153,6 +153,9 @@ func (f *Fake) Chat(ctx context.Context, r llm.ChatRequest) (*core.ChatResponse,
 	if out.Model == "" {
 		out.Model = f.info().ID
 	}
+	if out.Provider == "" {
+		out.Provider = "fake"
+	}
 	return &out, nil
 }
 
@@ -195,6 +198,9 @@ func (f *Fake) Stream(ctx context.Context, r llm.ChatRequest) (<-chan llm.Stream
 		if resp.Model == "" {
 			resp.Model = f.info().ID
 		}
+		if resp.Provider == "" {
+			resp.Provider = "fake"
+		}
 		var acc llm.Accumulator
 		emit := func(e llm.StreamEvent) bool {
 			if err := acc.Add(e); err != nil {
@@ -225,6 +231,8 @@ func (f *Fake) Stream(ctx context.Context, r llm.ChatRequest) (<-chan llm.Stream
 			fail(err)
 			return
 		}
+		final.Provider = resp.Provider
+		final.InvalidToolInputs = resp.InvalidToolInputs
 		if !send(llm.StreamEvent{Type: llm.EventMessageStop, Response: final}) {
 			fail(ctx.Err())
 		}

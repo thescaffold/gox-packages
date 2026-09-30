@@ -86,6 +86,12 @@ type StepRecord struct {
 
 // ToolCallRecord is one tool call made within a step.
 type ToolCallRecord struct {
+	// Completed is false for a call that was started and has no result yet. A
+	// resumed run uses it to tell "never ran" from "ran, result lost".
+	Completed bool
+	// Paused marks a call that asked to wait (for approval or credits) before it
+	// ran: it has had no effect and is safe to dispatch again on resume.
+	Paused   bool
 	ID       string
 	RunID    string
 	StepID   string

@@ -354,6 +354,7 @@ func (d *Driver) pump(ctx context.Context, dec ssestream.Decoder, r llm.ChatRequ
 				return
 			}
 			resp.Model = model
+			resp.Provider = provider
 			resp.InvalidToolInputs = checkEagerInputs(resp, tools)
 			terminal(llm.StreamEvent{Type: llm.EventMessageStop, Response: resp})
 			return
