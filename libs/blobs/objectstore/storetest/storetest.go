@@ -92,11 +92,13 @@ func Run(t *testing.T, cfg Config) {
 		{"ExpectedChecksum", expectedChecksum},
 		{"FailedPutLeavesNothing", failedPut},
 		{"Ranges", ranges},
+		{"RangedReaderSurvivesIoCopy", rangedCopy},
 		{"DeleteIsIdempotent", deleteIdem},
 		{"ListPrefixOrderAndPagination", list},
 		{"Copy", copyObj},
 		{"KeyValidation", keyValidation},
 		{"SizeLimit", sizeLimit},
+		{"LockedObjectsAreImmutable", locked},
 		{"Multipart", multipart},
 		{"MultipartAbortLeavesNothing", multipartAbort},
 		{"MultipartRejectsBadParts", multipartBad},
@@ -774,5 +776,72 @@ func ctxCancel(t *testing.T, cfg Config) {
 	}
 	if _, err := s.Head(context.Background(), "ws/a/cancelled"); !errors.Is(err, objectstore.ErrNotFound) {
 		t.Fatal("a cancelled Put left an object")
+	}
+}
+
+func locked(t *testing.T, cfg Config) {
+	s := cfg.New(t)
+	ctx := context.Background()
+	info := mustPut(t, s, "ws/a/evidence", []byte("original report"), objectstore.PutOptions{Locked: true})
+	if !info.Locked {
+		t.Fatal("ObjectInfo.Locked not set")
+	}
+	if h, _ := s.Head(ctx, "ws/a/evidence"); !h.Locked {
+		t.Fatal("Head lost the locked flag")
+	}
+	if _, err := s.Put(ctx, "ws/a/evidence", strings.NewReader("tampered"), objectstore.PutOptions{}); !errors.Is(err, objectstore.ErrLocked) {
+		t.Fatalf("Put over a locked object: %v", err)
+	}
+	if err := s.Delete(ctx, "ws/a/evidence"); !errors.Is(err, objectstore.ErrLocked) {
+		t.Fatalf("Delete of a locked object: %v", err)
+	}
+	mustPut(t, s, "ws/a/other", []byte("other"), objectstore.PutOptions{})
+	if _, err := s.Copy(ctx, "ws/a/other", "ws/a/evidence"); !errors.Is(err, objectstore.ErrLocked) {
+		t.Fatalf("Copy onto a locked object: %v", err)
+	}
+	id, _ := s.BeginMultipart(ctx, "ws/a/evidence", objectstore.PutOptions{})
+	_, _ = s.UploadPart(ctx, id, 1, strings.NewReader("x"))
+	pi := objectstore.PartInfo{Number: 1, Size: 1, SHA256: sum([]byte("x"))}
+	if _, err := s.CompleteMultipart(ctx, id, []objectstore.PartInfo{pi}); !errors.Is(err, objectstore.ErrLocked) {
+		t.Fatalf("multipart completion over a locked object: %v", err)
+	}
+	if got, _ := readAll(t, s, "ws/a/evidence", nil); string(got) != "original report" {
+		t.Fatalf("the locked object changed: %q", got)
+	}
+	// Copying a locked object OUT is fine, and the copy is not itself locked.
+	cp, err := s.Copy(ctx, "ws/a/evidence", "ws/a/evidence-copy")
+	if err != nil || cp.Locked {
+		t.Fatalf("copy of a locked object: %+v %v", cp, err)
+	}
+	if err := s.Delete(ctx, "ws/a/evidence-copy"); err != nil {
+		t.Fatalf("the copy must be deletable: %v", err)
+	}
+}
+
+// io.Copy uses WriterTo/ReaderFrom fast paths when a reader exposes them; a
+// ranged reader that embeds a raw file would bypass its own limit that way
+// (found in the fs driver by the HTTP download tests).
+func rangedCopy(t *testing.T, cfg Config) {
+	s := cfg.New(t)
+	data := randBytes(t, 50_000)
+	mustPut(t, s, "ws/a/rc", data, objectstore.PutOptions{})
+	rc, _, err := s.Get(context.Background(), "ws/a/rc", &objectstore.Range{Start: 100, End: 199})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = rc.Close() }()
+	var buf bytes.Buffer
+	if _, err := io.Copy(&buf, rc); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(buf.Bytes(), data[100:200]) {
+		t.Fatalf("io.Copy of a 100-byte range returned %d bytes", buf.Len())
+	}
+	// Also into a writer that implements ReaderFrom.
+	rc2, _, _ := s.Get(context.Background(), "ws/a/rc", &objectstore.Range{Suffix: 10})
+	defer func() { _ = rc2.Close() }()
+	var sb strings.Builder
+	if _, err := io.Copy(&sb, rc2); err != nil || sb.Len() != 10 {
+		t.Fatalf("suffix copy: %d %v", sb.Len(), err)
 	}
 }

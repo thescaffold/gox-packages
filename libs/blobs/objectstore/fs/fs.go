@@ -84,10 +84,11 @@ type meta struct {
 	MediaType string            `json:"mediaType,omitempty"`
 	CreatedAt time.Time         `json:"createdAt"`
 	Metadata  map[string]string `json:"metadata,omitempty"`
+	Locked    bool              `json:"locked,omitempty"`
 }
 
 func (m meta) info() objectstore.ObjectInfo {
-	return objectstore.ObjectInfo{Key: m.Key, Size: m.Size, SHA256: m.SHA256, MediaType: m.MediaType, CreatedAt: m.CreatedAt, Metadata: m.Metadata}
+	return objectstore.ObjectInfo{Key: m.Key, Size: m.Size, SHA256: m.SHA256, MediaType: m.MediaType, CreatedAt: m.CreatedAt, Metadata: m.Metadata, Locked: m.Locked}
 }
 
 func keyHash(key string) string { h := sha256.Sum256([]byte(key)); return hex.EncodeToString(h[:]) }
@@ -198,6 +199,9 @@ func (s *Store) commit(key, staged string, size int64, sum string, opts objectst
 	defer l.Unlock()
 
 	old, oldErr := readMeta(s.metaPath(key))
+	if oldErr == nil && old.Locked {
+		return objectstore.ObjectInfo{}, fmt.Errorf("%w: %s", objectstore.ErrLocked, key)
+	}
 	if opts.IfNotExists && oldErr == nil {
 		return objectstore.ObjectInfo{}, fmt.Errorf("%w: %s", objectstore.ErrExists, key)
 	}
@@ -206,7 +210,7 @@ func (s *Store) commit(key, staged string, size int64, sum string, opts objectst
 	if err := os.Rename(staged, s.dataPath(id)); err != nil {
 		return objectstore.ObjectInfo{}, err
 	}
-	m := meta{Key: key, DataFile: id, Size: size, SHA256: sum, MediaType: opts.MediaType, CreatedAt: s.now(), Metadata: lowerKeys(opts.Metadata)}
+	m := meta{Key: key, DataFile: id, Size: size, SHA256: sum, MediaType: opts.MediaType, CreatedAt: s.now(), Metadata: lowerKeys(opts.Metadata), Locked: opts.Locked}
 	if err := s.writeMeta(key, m); err != nil {
 		_ = os.Remove(s.dataPath(id))
 		return objectstore.ObjectInfo{}, err
@@ -264,12 +268,16 @@ func (s *Store) Put(ctx context.Context, key string, r io.Reader, opts objectsto
 	return info, nil
 }
 
+// fileReader deliberately does NOT embed *os.File: that would promote the
+// file's own WriteTo/ReadFrom, which io.Copy prefers, and bypass the range
+// limit in r.
 type fileReader struct {
-	*os.File
+	f *os.File
 	r io.Reader
 }
 
 func (f fileReader) Read(p []byte) (int, error) { return f.r.Read(p) }
+func (f fileReader) Close() error               { return f.f.Close() }
 
 func (s *Store) Get(ctx context.Context, key string, rng *objectstore.Range) (io.ReadCloser, objectstore.ObjectInfo, error) {
 	if err := objectstore.ValidateKey(key); err != nil {
@@ -293,7 +301,7 @@ func (s *Store) Get(ctx context.Context, key string, rng *objectstore.Range) (io
 			return nil, objectstore.ObjectInfo{}, err
 		}
 	}
-	start, length, err := resolveRange(rng, m.Size)
+	start, length, err := objectstore.ResolveRange(rng, m.Size)
 	if err != nil {
 		_ = f.Close()
 		return nil, objectstore.ObjectInfo{}, err
@@ -304,37 +312,7 @@ func (s *Store) Get(ctx context.Context, key string, rng *objectstore.Range) (io
 			return nil, objectstore.ObjectInfo{}, err
 		}
 	}
-	return fileReader{File: f, r: io.LimitReader(ctxReader{ctx, f}, length)}, m.info(), nil
-}
-
-// resolveRange turns a Range into (start, length) over an object of size bytes.
-func resolveRange(rng *objectstore.Range, size int64) (start, length int64, err error) {
-	if rng == nil {
-		return 0, size, nil
-	}
-	unsat := fmt.Errorf("%w: size %d", objectstore.ErrRangeNotSatisfiable, size)
-	switch {
-	case rng.Suffix > 0:
-		if size == 0 {
-			return 0, 0, unsat
-		}
-		n := rng.Suffix
-		if n > size {
-			n = size
-		}
-		return size - n, n, nil
-	case rng.Start < 0 || rng.Start >= size:
-		return 0, 0, unsat
-	case rng.OpenEnd:
-		return rng.Start, size - rng.Start, nil
-	case rng.End < rng.Start:
-		return 0, 0, unsat
-	}
-	end := rng.End
-	if end >= size {
-		end = size - 1
-	}
-	return rng.Start, end - rng.Start + 1, nil
+	return fileReader{f: f, r: io.LimitReader(ctxReader{ctx, f}, length)}, m.info(), nil
 }
 
 func (s *Store) Head(ctx context.Context, key string) (objectstore.ObjectInfo, error) {
@@ -361,6 +339,9 @@ func (s *Store) Delete(ctx context.Context, key string) error {
 	}
 	if err != nil {
 		return err
+	}
+	if m.Locked {
+		return fmt.Errorf("%w: %s", objectstore.ErrLocked, key)
 	}
 	if err := os.Remove(s.metaPath(key)); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err

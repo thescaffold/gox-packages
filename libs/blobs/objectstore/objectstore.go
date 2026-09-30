@@ -44,6 +44,8 @@ var (
 	ErrUploadNotFound      = errors.New("objectstore: multipart upload not found")
 	ErrInvalidPart         = errors.New("objectstore: invalid or missing multipart part")
 	ErrForbidden           = errors.New("objectstore: key is outside the allowed prefix")
+	ErrLocked              = errors.New("objectstore: object is locked (immutable evidence) and cannot be changed or deleted")
+	ErrQuotaExceeded       = errors.New("objectstore: workspace storage quota exceeded")
 )
 
 // ObjectInfo describes a stored object.
@@ -55,6 +57,7 @@ type ObjectInfo struct {
 	CreatedAt time.Time
 	// Metadata is caller-supplied, stored verbatim (keys lower-cased).
 	Metadata map[string]string
+	Locked   bool
 }
 
 // PutOptions configure a write.
@@ -66,6 +69,14 @@ type PutOptions struct {
 	ExpectedSHA256 string
 	// IfNotExists makes the write fail with ErrExists rather than overwrite.
 	IfNotExists bool
+	// Locked marks the object immutable once committed (evidence-class
+	// objects, TRD §6.10): Put over it, Copy onto it and Delete of it fail
+	// with ErrLocked. Drivers add their own enforcement below the API where
+	// they can (the Postgres driver uses database triggers).
+	Locked bool
+	// ExpiresAt, when non-zero, lets a retention sweep remove the object
+	// (ephemeral classes: exports, sandbox diagnostics).
+	ExpiresAt time.Time
 }
 
 // Range selects bytes [Start, End] inclusive. Use Suffix for "the last N
