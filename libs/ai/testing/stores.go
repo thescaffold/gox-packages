@@ -217,3 +217,103 @@ func (s memCalls) List(_ context.Context, runID string) ([]core.ToolCallRecord, 
 	defer s.m.mu.Unlock()
 	return append([]core.ToolCallRecord(nil), s.m.calls[runID]...), nil
 }
+
+// MemoryPrompts implements PromptStore and PromptVersionStore in memory, with
+// Publish and Activate to create versions and roll back.
+type MemoryPrompts struct {
+	mu        sync.Mutex
+	templates map[string]*core.PromptTemplate // by id
+	versions  map[string]*core.PromptVersion  // by id
+	byTpl     map[string][]string             // template id -> version ids, in order
+	seq       int
+}
+
+// NewMemoryPrompts returns an empty store.
+func NewMemoryPrompts() *MemoryPrompts {
+	return &MemoryPrompts{templates: map[string]*core.PromptTemplate{}, versions: map[string]*core.PromptVersion{}, byTpl: map[string][]string{}}
+}
+
+// Publish adds a new version of the template for (key, workspaceID) — creating
+// the template on first use — and makes it the active one. workspaceID "" is
+// the platform template.
+func (m *MemoryPrompts) Publish(key, workspaceID, body string, variables ...string) *core.PromptVersion {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var tpl *core.PromptTemplate
+	for _, t := range m.templates {
+		if t.Key == key && t.WorkspaceID == workspaceID {
+			tpl = t
+		}
+	}
+	if tpl == nil {
+		m.seq++
+		tpl = &core.PromptTemplate{ID: core.NewID("pt"), Key: key, WorkspaceID: workspaceID}
+		m.templates[tpl.ID] = tpl
+	}
+	v := &core.PromptVersion{ID: core.NewID("pv"), TemplateID: tpl.ID, Version: len(m.byTpl[tpl.ID]) + 1, Body: body, Variables: variables, CreatedAt: time.Now()}
+	m.versions[v.ID] = v
+	m.byTpl[tpl.ID] = append(m.byTpl[tpl.ID], v.ID)
+	tpl.ActiveVersionID = v.ID
+	return v
+}
+
+// Activate points a template at an existing version (a rollback).
+func (m *MemoryPrompts) Activate(templateID, versionID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	t, ok := m.templates[templateID]
+	v, vok := m.versions[versionID]
+	if !ok || !vok || v.TemplateID != templateID {
+		return core.ErrNotFound
+	}
+	t.ActiveVersionID = versionID
+	return nil
+}
+
+// GetByKey implements core.PromptStore: the workspace override if there is one,
+// else the platform template.
+func (m *MemoryPrompts) GetByKey(_ context.Context, key, workspaceID string) (*core.PromptTemplate, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var platform *core.PromptTemplate
+	for _, t := range m.templates {
+		if t.Key != key {
+			continue
+		}
+		if workspaceID != "" && t.WorkspaceID == workspaceID {
+			c := *t
+			return &c, nil
+		}
+		if t.WorkspaceID == "" {
+			platform = t
+		}
+	}
+	if platform == nil {
+		return nil, core.ErrNotFound
+	}
+	c := *platform
+	return &c, nil
+}
+
+// Get implements core.PromptVersionStore.
+func (m *MemoryPrompts) Get(_ context.Context, id string) (*core.PromptVersion, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	v, ok := m.versions[id]
+	if !ok {
+		return nil, core.ErrNotFound
+	}
+	c := *v
+	return &c, nil
+}
+
+// GetActive implements core.PromptVersionStore.
+func (m *MemoryPrompts) GetActive(ctx context.Context, templateID string) (*core.PromptVersion, error) {
+	m.mu.Lock()
+	t, ok := m.templates[templateID]
+	m.mu.Unlock()
+	if !ok || t.ActiveVersionID == "" {
+		return nil, core.ErrNotFound
+	}
+	return m.Get(ctx, t.ActiveVersionID)
+}
