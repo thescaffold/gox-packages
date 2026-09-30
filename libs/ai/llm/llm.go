@@ -35,7 +35,10 @@ type ModelInfo struct {
 	SupportsTools     bool
 	SupportsStreaming bool
 	SupportsVision    bool
-	SupportsThinking  bool
+	// SupportsThinking: adaptive thinking is accepted.
+	SupportsThinking bool
+	// SupportsEffort: the Effort field is honoured.
+	SupportsEffort bool
 	// SupportsForcedToolChoice: ToolChoice "any" and "tool" work. False for
 	// Fable 5.1, where tools are called with "auto" plus an instruction.
 	SupportsForcedToolChoice bool

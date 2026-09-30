@@ -202,10 +202,48 @@ func TestAccumulatorRefusesUnparseableToolInput(t *testing.T) {
 	feed(t, &a,
 		ev(llm.EventBlockStart, func(e *llm.StreamEvent) { e.BlockType = core.TypeToolUse; e.ToolID = "t"; e.ToolName = "x" }),
 		ev(llm.EventToolInput, func(e *llm.StreamEvent) { e.PartialJSON = `{"a":` }), // truncated
-		ev(llm.EventMessageDelta, func(e *llm.StreamEvent) { e.StopReason = core.StopMaxTokens }),
+		ev(llm.EventMessageDelta, func(e *llm.StreamEvent) { e.StopReason = core.StopToolUse }),
 	)
 	if _, err := a.Response(); err == nil || !strings.Contains(err.Error(), "not valid JSON") {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+// A turn cut short leaves a half-written tool call. That must surface as the
+// real outcome (max_tokens, refusal, ...), with the unanswerable call dropped,
+// not as a JSON parse error that hides it.
+func TestAccumulatorDropsAHalfWrittenToolCallWhenTheTurnWasCutShort(t *testing.T) {
+	for _, stop := range []core.StopReason{core.StopMaxTokens, core.StopRefusal, core.StopContextExceeded, core.StopError, core.StopCancelled} {
+		var a llm.Accumulator
+		feed(t, &a,
+			ev(llm.EventBlockStart, func(e *llm.StreamEvent) { e.Index = 0; e.BlockType = core.TypeText }),
+			ev(llm.EventTextDelta, func(e *llm.StreamEvent) { e.Index = 0; e.Text = "let me" }),
+			ev(llm.EventBlockStart, func(e *llm.StreamEvent) {
+				e.Index = 1
+				e.BlockType = core.TypeToolUse
+				e.ToolID = "t"
+				e.ToolName = "x"
+			}),
+			ev(llm.EventToolInput, func(e *llm.StreamEvent) { e.Index = 1; e.PartialJSON = `{"a":` }),
+			ev(llm.EventMessageDelta, func(e *llm.StreamEvent) { e.StopReason = stop }),
+		)
+		r, err := a.Response()
+		if err != nil {
+			t.Fatalf("%s: %v", stop, err)
+		}
+		if r.StopReason != stop || len(r.Message.Content) != 1 || r.Message.Content.PlainText() != "let me" {
+			t.Fatalf("%s: %+v", stop, r)
+		}
+	}
+	// a COMPLETE tool call survives a max_tokens stop
+	var a llm.Accumulator
+	feed(t, &a,
+		ev(llm.EventBlockStart, func(e *llm.StreamEvent) { e.BlockType = core.TypeToolUse; e.ToolID = "t"; e.ToolName = "x" }),
+		ev(llm.EventToolInput, func(e *llm.StreamEvent) { e.PartialJSON = `{"a":1}` }),
+		ev(llm.EventMessageDelta, func(e *llm.StreamEvent) { e.StopReason = core.StopMaxTokens }),
+	)
+	if r, err := a.Response(); err != nil || len(r.Message.Content.ToolUses()) != 1 {
+		t.Fatalf("complete call dropped: %v %+v", err, r)
 	}
 }
 

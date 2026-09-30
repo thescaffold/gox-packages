@@ -14,6 +14,9 @@ const (
 	// The caller tries the role's fallback model, then fails the step with a
 	// refusal evidence record (TRD §6.2).
 	StopRefusal StopReason = "refusal"
+	// StopContextExceeded: the input filled the model's context window. The
+	// caller compacts (summarise-and-continue) rather than retrying as is.
+	StopContextExceeded StopReason = "context_exceeded"
 )
 
 // ChatResponse is one assembled model reply.
@@ -28,4 +31,9 @@ type ChatResponse struct {
 	Model string `json:"model"`
 	// ProviderID is the provider's response id, when it gave one.
 	ProviderID string `json:"providerId,omitempty"`
+	// InvalidToolInputs maps a tool_use id to why its input failed validation
+	// against the tool's schema. A driver fills it for tools whose input the
+	// provider does not validate (eager input streaming); the dispatcher then
+	// answers that call with an INVALID_JSON error instead of running it.
+	InvalidToolInputs map[string]string `json:"invalidToolInputs,omitempty"`
 }

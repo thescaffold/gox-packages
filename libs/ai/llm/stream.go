@@ -144,10 +144,16 @@ func (a *Accumulator) Add(e StreamEvent) error {
 }
 
 // Response builds the assistant message. A tool_use whose accumulated input is
-// not valid JSON is an error here: the caller must not run a tool on input it
-// cannot parse. An empty input becomes {}.
+// not valid JSON is an error when the model says it finished its turn: the
+// caller must not run a tool on input it cannot parse. When the turn was cut
+// short (max_tokens, refusal, context exceeded, error) a half-written tool_use
+// is expected, so it is dropped from the message rather than hiding that
+// outcome behind a parse error; an incomplete tool call can never be answered
+// anyway. An empty input becomes {}.
 func (a *Accumulator) Response() (*core.ChatResponse, error) {
 	content := make(core.Content, 0, len(a.order))
+	cutShort := a.stop == core.StopMaxTokens || a.stop == core.StopRefusal ||
+		a.stop == core.StopContextExceeded || a.stop == core.StopError || a.stop == core.StopCancelled
 	for _, idx := range a.order {
 		p := a.blocks[idx]
 		switch p.typ {
@@ -163,6 +169,9 @@ func (a *Accumulator) Response() (*core.ChatResponse, error) {
 				in = []byte("{}")
 			}
 			if !json.Valid(in) {
+				if cutShort {
+					continue
+				}
 				return nil, fmt.Errorf("llm: tool_use %q (%s) input is not valid JSON", p.toolName, p.toolID)
 			}
 			content = append(content, core.ToolUseBlock{ID: p.toolID, Name: p.toolName, Input: json.RawMessage(in)})

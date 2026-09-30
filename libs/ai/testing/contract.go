@@ -1,11 +1,12 @@
 package aitesting
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"reflect"
-	"runtime"
+	"runtime/pprof"
 	"strings"
 	"testing"
 	"time"
@@ -321,7 +322,6 @@ func (c contract) streamDeltas(t *testing.T) {
 }
 
 func (c contract) streamCancel(t *testing.T) {
-	before := runtime.NumGoroutine()
 	ctx, cancel := context.WithCancel(context.Background())
 	ch, err := c.driver(t, Scenario{Stall: true}).Stream(ctx, c.req())
 	if err != nil {
@@ -345,8 +345,8 @@ loop:
 	if last.Type != llm.EventError || !errors.Is(last.Err, context.Canceled) {
 		t.Fatalf("last event = %+v, want an error wrapping context.Canceled", last)
 	}
-	if !settles(before) {
-		t.Errorf("goroutines leaked: %d before, %d after", before, runtime.NumGoroutine())
+	if leaked := leakedGoroutines(); leaked != "" {
+		t.Errorf("goroutines from this module outlived the stream:\n%s", leaked)
 	}
 }
 
@@ -354,7 +354,6 @@ loop:
 // stream end with a terminal event (an error wrapping context.Canceled, or the
 // message_stop if the answer was already complete) and a closed channel.
 func (c contract) streamCancelMidway(t *testing.T) {
-	before := runtime.NumGoroutine()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	ch, err := c.driver(t, Scenario{Reply: textReply("a fairly long answer that streams in pieces")}).Stream(ctx, c.req())
@@ -387,20 +386,32 @@ loop:
 	if last.Type == llm.EventError && !errors.Is(last.Err, context.Canceled) {
 		t.Fatalf("terminal error = %v, want context.Canceled", last.Err)
 	}
-	if !settles(before) {
-		t.Errorf("goroutines leaked: %d before, %d after", before, runtime.NumGoroutine())
+	if leaked := leakedGoroutines(); leaked != "" {
+		t.Errorf("goroutines from this module outlived the stream:\n%s", leaked)
 	}
 }
 
-// settles waits briefly for the goroutine count to return to its baseline.
-func settles(before int) bool {
+// leakedGoroutines waits briefly, then returns the stacks of any goroutine
+// still running this module's code other than a test's own. HTTP transport
+// goroutines (idle keep-alive connections) are not the driver's to stop and are
+// ignored.
+func leakedGoroutines() string {
+	var out string
 	for i := 0; i < 100; i++ {
-		if runtime.NumGoroutine() <= before {
-			return true
+		var buf bytes.Buffer
+		_ = pprof.Lookup("goroutine").WriteTo(&buf, 1)
+		out = ""
+		for _, g := range strings.Split(buf.String(), "\n\n") {
+			if strings.Contains(g, "gox-packages/libs/ai/") && !strings.Contains(g, "testing.tRunner") && !strings.Contains(g, "leakedGoroutines") {
+				out += g + "\n\n"
+			}
+		}
+		if out == "" {
+			return ""
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	return false
+	return out
 }
 
 func (c contract) chatCancel(t *testing.T) {
