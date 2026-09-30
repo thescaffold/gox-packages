@@ -211,6 +211,19 @@ func (s *AuthSuite) TestFromClaims_PopulatesFullContextFromVerifiedClaims() {
 	s.T.Expect(len(ntx.Permissions)).ToEqual(1)
 }
 
+// A long-lived connection (the SSE stream, PLAN M1-12) has to know when its
+// token dies; the context must carry the verified "exp" claim.
+func (s *AuthSuite) TestFromClaims_CarriesTokenExpiry() {
+	before := time.Now().Add(time.Hour).Unix()
+	token, _ := auth.Sign(map[string]any{"sub": "u1", "workspaceId": "ws1"}, testSecret, time.Hour)
+	ctx := test.NewMockContext()
+	ctx.MockRequest().WithHeader("Authorization", "Bearer "+token)
+	s.T.Expect((&auth.AuthMiddleware{Secret: testSecret}).Handle(ctx)).ToBeNil()
+	s.T.Expect((&auth.FromClaims{}).Handle(ctx)).ToBeNil()
+	got := ntxctx.Get(ctx).TokenExpiresAt
+	s.T.Expect(got >= before && got <= before+5).ToEqual(true)
+}
+
 // TestFromClaims_NoAuthMiddlewareRun_ProducesEmptyContext is the specific
 // regression this exists to prevent understood in reverse: with no verified
 // claims at all (AuthMiddleware never ran, or the request had none),

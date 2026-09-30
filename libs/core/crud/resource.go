@@ -72,14 +72,17 @@ func (r *CrudResource[E, C, U]) Create(dto *CreateDto[C]) types.Output {
 	ctx := dto.Ctx
 	payload := dto.Body
 
+	if out := r.validateBody(&payload, false, ctx); out != nil {
+		return out
+	}
 	if err := r.runHook(BeforeCreate, &payload, ctx); err != nil {
-		return response.InternalServerError(r.cfg.Name, err.Error())
+		return r.hookFail(err, ctx)
 	}
 	if err := r.runHookCtx(BeforeCreate, HookEvent{DTO: &payload}, ctx); err != nil {
-		return response.InternalServerError(r.cfg.Name, err.Error())
+		return r.hookFail(err, ctx)
 	}
 	if m, err := r.runMorph(BeforeCreate, &payload, ctx); err != nil {
-		return response.InternalServerError(r.cfg.Name, err.Error())
+		return r.hookFail(err, ctx)
 	} else if m != nil {
 		payload = *m
 	}
@@ -191,6 +194,9 @@ func (r *CrudResource[E, C, U]) Update(dto *UpdateDto[U]) types.Output {
 	id := dto.ID
 	payload := dto.Body
 
+	if out := r.validateBody(&payload, true, ctx); out != nil {
+		return out
+	}
 	if err := r.runHook(BeforeUpdate, &payload, ctx); err != nil {
 		return response.InternalServerError(r.cfg.Name, err.Error())
 	}
@@ -285,7 +291,7 @@ func (r *CrudResource[E, C, U]) CreateIgnoreDuplicate(dto *CreateDto[C]) types.O
 
 	_ = r.runHook(BeforeCreate, &payload, ctx)
 	if m, err := r.runMorph(BeforeCreate, &payload, ctx); err != nil {
-		return response.InternalServerError(r.cfg.Name, err.Error())
+		return r.hookFail(err, ctx)
 	} else if m != nil {
 		payload = *m
 	}
@@ -316,7 +322,7 @@ func (r *CrudResource[E, C, U]) Upsert(dto *UpsertDto[C]) types.Output {
 
 	_ = r.runHook(BeforeCreate, &payload, ctx)
 	if m, err := r.runMorph(BeforeCreate, &payload, ctx); err != nil {
-		return response.InternalServerError(r.cfg.Name, err.Error())
+		return r.hookFail(err, ctx)
 	} else if m != nil {
 		payload = *m
 	}
@@ -364,13 +370,17 @@ func (r *CrudResource[E, C, U]) UpdatePut(dto *UpdatePutDto[C]) types.Output {
 	id := dto.ID
 	payload := dto.Body
 
+	if out := r.validateBody(&payload, false, ctx); out != nil {
+		return out
+	}
+
 	if err := r.runHook(BeforeUpdate, &payload, ctx); err != nil {
 		return response.InternalServerError(r.cfg.Name, err.Error())
 	}
 	// TS uses the BeforeCreate morph on the PUT body (because the body is a
 	// CreateDto) — gox mirrors that here.
 	if m, err := r.runMorph(BeforeCreate, &payload, ctx); err != nil {
-		return response.InternalServerError(r.cfg.Name, err.Error())
+		return r.hookFail(err, ctx)
 	} else if m != nil {
 		payload = *m
 	}
@@ -669,13 +679,16 @@ func (r *CrudResource[E, C, U]) workspaceColumn() string {
 // caller MUST fail closed — return empty/not-found — rather than run the
 // original, now-unsafe, unscoped query.
 func (r *CrudResource[E, C, U]) scopeWhere(where string, args []any, ctx ntxctx.NTXContext) (string, []any, bool) {
-	if !r.cfg.WorkspaceScoped {
+	if !r.cfg.WorkspaceScoped && r.cfg.WorkspaceScopeClause == "" {
 		return where, args, true
 	}
 	if ctx.WorkspaceID == "" {
 		return where, args, false
 	}
 	clause := r.workspaceColumn() + " = ?"
+	if r.cfg.WorkspaceScopeClause != "" {
+		clause = r.cfg.WorkspaceScopeClause
+	}
 	if where != "" {
 		where = "(" + where + ") AND " + clause
 	} else {

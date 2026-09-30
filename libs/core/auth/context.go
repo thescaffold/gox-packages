@@ -48,6 +48,9 @@ func (m *FromClaims) Handle(ctx types.Context) error {
 			ntx.WorkspaceID = v
 			ntx.Workspace = utils.KeyValue{"id": v}
 		}
+		if v, ok := claims["exp"].(float64); ok {
+			ntx.TokenExpiresAt = int64(v)
+		}
 		if v, ok := claims["roles"].([]any); ok {
 			ntx.Roles = v
 		}

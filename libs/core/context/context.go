@@ -34,6 +34,10 @@ type NTXContext struct {
 	// IP holds the originating client IP, parsed from x-forwarded-for (first hop)
 	// or x-real-ip. Mirrors TS get-ip.decorator.ts.
 	IP string
+	// TokenExpiresAt is the verified JWT "exp" (unix seconds), set only by
+	// auth.FromClaims; 0 when unknown. Lets a long-lived response (SSE) end
+	// itself when the token that authorised it expires.
+	TokenExpiresAt int64
 }
 
 // Parse reads x-ntx-* headers from a goose Headers map and returns a populated NTXContext.

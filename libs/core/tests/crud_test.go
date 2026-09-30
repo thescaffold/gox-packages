@@ -566,3 +566,171 @@ func (s *CrudSuite) TestAfterGet_MorphReplacesEntity() {
 	got := envelope(out).Data.(*Item)
 	s.T.Expect(got.Name).ToEqual("Enriched: raw")
 }
+
+// ── ValidateBody (TRD §7.1 U-G6) ─────────────────────────────────────────────
+//
+// `binding:"..."` tags were inert: goose's binder never reads them and
+// CrudResource never validated the DTO, so a bad enum value was persisted
+// with HTTP 200. ValidateBody opts a resource into enforcement. It is opt-in
+// because scaffold apps carry ~400 legacy `binding:"required"` tags on
+// numeric/struct fields where a zero value is legitimate (Limit, Amount…);
+// enforcing those globally would start rejecting requests that work today.
+
+type Widget struct {
+	ID    string
+	Name  string `binding:"required"`
+	Stage string `binding:"omitempty,oneof=spec design build"`
+	Level int    `binding:"gte=0,lte=6"`
+}
+
+func newWidgetResource(cfg crud.Config[Widget, Widget, Widget]) (*crud.CrudResource[Widget, Widget, Widget], *mockEntity[Widget]) {
+	entity := &mockEntity[Widget]{}
+	r := &crud.CrudResource[Widget, Widget, Widget]{}
+	r.Hydrate(entity, cfg)
+	return r, entity
+}
+
+func (s *CrudSuite) TestCreate_ValidateBody_RejectsBadEnum() {
+	r, entity := newWidgetResource(crud.Config[Widget, Widget, Widget]{Name: "Widget", ValidateBody: true})
+	out := r.Create(&crud.CreateDto[Widget]{Body: Widget{Name: "a", Stage: "totally_bogus_stage"}})
+	s.T.Expect(out.Code()).ToEqual(http.StatusBadRequest)
+	s.T.Expect(entity.insertCalled).ToEqual(false)
+}
+
+func (s *CrudSuite) TestCreate_ValidateBody_RejectsMissingRequired() {
+	r, entity := newWidgetResource(crud.Config[Widget, Widget, Widget]{Name: "Widget", ValidateBody: true})
+	out := r.Create(&crud.CreateDto[Widget]{Body: Widget{}})
+	s.T.Expect(out.Code()).ToEqual(http.StatusBadRequest)
+	s.T.Expect(entity.insertCalled).ToEqual(false)
+}
+
+func (s *CrudSuite) TestCreate_ValidateBody_RejectsOutOfRange() {
+	r, _ := newWidgetResource(crud.Config[Widget, Widget, Widget]{Name: "Widget", ValidateBody: true})
+	out := r.Create(&crud.CreateDto[Widget]{Body: Widget{Name: "a", Level: 9}})
+	s.T.Expect(out.Code()).ToEqual(http.StatusBadRequest)
+}
+
+func (s *CrudSuite) TestCreate_ValidateBody_AcceptsValidAndZeroLevel() {
+	r, entity := newWidgetResource(crud.Config[Widget, Widget, Widget]{Name: "Widget", ValidateBody: true})
+	out := r.Create(&crud.CreateDto[Widget]{Body: Widget{Name: "a", Stage: "spec", Level: 0}})
+	s.T.Expect(out.Code()).ToEqual(http.StatusOK)
+	s.T.Expect(entity.insertCalled).ToEqual(true)
+}
+
+func (s *CrudSuite) TestCreate_NoValidateBody_StillAcceptsBadValue() {
+	r, entity := newWidgetResource(crud.Config[Widget, Widget, Widget]{Name: "Widget"})
+	out := r.Create(&crud.CreateDto[Widget]{Body: Widget{Stage: "totally_bogus_stage"}})
+	s.T.Expect(out.Code()).ToEqual(http.StatusOK)
+	s.T.Expect(entity.insertCalled).ToEqual(true)
+}
+
+// PATCH bodies are partial: an omitted field must not trip `required`, but a
+// present-and-invalid one must still be rejected.
+func (s *CrudSuite) TestUpdate_ValidateBody_PartialBodyMayOmitRequired() {
+	r, entity := newWidgetResource(crud.Config[Widget, Widget, Widget]{Name: "Widget", ValidateBody: true})
+	entity.items = []Widget{{ID: "abc", Name: "A"}}
+	out := r.Update(&crud.UpdateDto[Widget]{ID: "abc", Body: Widget{Stage: "design"}})
+	s.T.Expect(out.Code()).ToEqual(http.StatusOK)
+	s.T.Expect(entity.updateCalled).ToEqual(true)
+}
+
+func (s *CrudSuite) TestUpdate_ValidateBody_RejectsBadEnum() {
+	r, entity := newWidgetResource(crud.Config[Widget, Widget, Widget]{Name: "Widget", ValidateBody: true})
+	entity.items = []Widget{{ID: "abc", Name: "A"}}
+	out := r.Update(&crud.UpdateDto[Widget]{ID: "abc", Body: Widget{Stage: "bogus"}})
+	s.T.Expect(out.Code()).ToEqual(http.StatusBadRequest)
+	s.T.Expect(entity.updateCalled).ToEqual(false)
+}
+
+func (s *CrudSuite) TestUpdatePut_ValidateBody_RejectsMissingRequired() {
+	r, entity := newWidgetResource(crud.Config[Widget, Widget, Widget]{Name: "Widget", ValidateBody: true})
+	entity.items = []Widget{{ID: "abc", Name: "A"}}
+	out := r.UpdatePut(&crud.UpdatePutDto[Widget]{ID: "abc", Body: Widget{}})
+	s.T.Expect(out.Code()).ToEqual(http.StatusBadRequest)
+	s.T.Expect(entity.updateCalled).ToEqual(false)
+}
+
+// ── WorkspaceScopeClause (TRD §7.1 U-S12) ───────────────────────────────────
+//
+// Some rows have no workspace column of their own: their tenant is reached
+// through a parent (a TaskComment through its Task). WorkspaceScopeClause
+// carries that join as SQL with a single `?` bound to the caller's workspace,
+// and is applied on the same paths WorkspaceScoped covers, failing closed the
+// same way.
+
+const commentScope = `task_id IN (SELECT id FROM "Tasks" WHERE workspace_id = ?)`
+
+func (s *CrudSuite) TestList_WorkspaceScopeClause_UsesTheJoinClause() {
+	r, entity := newItemResource(crud.Config[Item, Item, Item]{Name: "Item", WorkspaceScopeClause: commentScope})
+	out := r.List(&crud.ListDto{Queries: map[string]string{}, Ctx: ntxctx.NTXContext{WorkspaceID: "ws-a"}})
+	s.T.Expect(out.Code()).ToEqual(http.StatusOK)
+	s.T.Expect(entity.lastQuery).ToContainString(commentScope)
+	s.T.Expect(entity.lastArgs[len(entity.lastArgs)-1]).ToEqual("ws-a")
+}
+
+func (s *CrudSuite) TestGet_WorkspaceScopeClause_ScopesLookupAndFailsClosed() {
+	r, entity := newItemResource(crud.Config[Item, Item, Item]{Name: "Item", WorkspaceScopeClause: commentScope})
+	entity.items = []Item{{ID: "abc"}}
+	out := r.Get(&crud.GetDto{ID: "abc", Ctx: ntxctx.NTXContext{WorkspaceID: "ws-a"}})
+	s.T.Expect(out.Code()).ToEqual(http.StatusOK)
+	s.T.Expect(entity.lastQuery).ToContainString(commentScope)
+
+	out = r.Get(&crud.GetDto{ID: "abc"}) // no workspace in context
+	s.T.Expect(out.Code()).ToEqual(http.StatusNotFound)
+}
+
+func (s *CrudSuite) TestUpdateDelete_WorkspaceScopeClause_FailClosedWithoutWorkspace() {
+	r, entity := newItemResource(crud.Config[Item, Item, Item]{Name: "Item", WorkspaceScopeClause: commentScope})
+	entity.items = []Item{{ID: "abc", Name: "A"}}
+	out := r.Update(&crud.UpdateDto[Item]{ID: "abc", Body: Item{Name: "B"}})
+	s.T.Expect(out.Code()).ToEqual(http.StatusBadRequest)
+	s.T.Expect(entity.updateCalled).ToEqual(false)
+	out = r.Delete(&crud.DeleteDto{ID: "abc"})
+	s.T.Expect(out.Code()).ToEqual(http.StatusNotFound)
+	s.T.Expect(entity.deleteCalled).ToEqual(false)
+}
+
+// ── HTTPError from hooks/morphs (TRD §7.1 U-S12) ────────────────────────────
+//
+// A BeforeCreate morph is the one validation point that runs on Create, PUT
+// and upsert alike, so it is where a resource checks that a parent id in the
+// body belongs to the caller's workspace. Returning a plain error surfaced as
+// HTTP 500, which reads as a server fault for what is a client error;
+// *crud.HTTPError lets the morph pick the status.
+
+func (s *CrudSuite) rejectingResource() (*crud.CrudResource[Item, Item, Item], *mockEntity[Item]) {
+	return newItemResource(crud.Config[Item, Item, Item]{
+		Name: "Item",
+		Morphs: map[string]crud.MorphFn{
+			crud.BeforeCreate: func(payload any, ctx ntxctx.NTXContext) (any, error) {
+				return nil, &crud.HTTPError{Status: http.StatusNotFound, Message: "parent not found"}
+			},
+		},
+	})
+}
+
+func (s *CrudSuite) TestCreate_MorphHTTPError_UsesItsStatusAndDoesNotInsert() {
+	r, entity := s.rejectingResource()
+	out := r.Create(&crud.CreateDto[Item]{Body: Item{Name: "x"}})
+	s.T.Expect(out.Code()).ToEqual(http.StatusNotFound)
+	s.T.Expect(entity.insertCalled).ToEqual(false)
+}
+
+func (s *CrudSuite) TestUpdatePut_MorphHTTPError_UsesItsStatusAndDoesNotUpdate() {
+	r, entity := s.rejectingResource()
+	entity.items = []Item{{ID: "abc", Name: "A"}}
+	out := r.UpdatePut(&crud.UpdatePutDto[Item]{ID: "abc", Body: Item{Name: "moved"}})
+	s.T.Expect(out.Code()).ToEqual(http.StatusNotFound)
+	s.T.Expect(entity.updateCalled).ToEqual(false)
+}
+
+func (s *CrudSuite) TestCreate_PlainMorphError_StaysA500() {
+	r, _ := newItemResource(crud.Config[Item, Item, Item]{
+		Name: "Item",
+		Morphs: map[string]crud.MorphFn{
+			crud.BeforeCreate: func(payload any, ctx ntxctx.NTXContext) (any, error) { return nil, errors.New("boom") },
+		},
+	})
+	out := r.Create(&crud.CreateDto[Item]{Body: Item{Name: "x"}})
+	s.T.Expect(out.Code()).ToEqual(http.StatusInternalServerError)
+}

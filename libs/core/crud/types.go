@@ -139,4 +139,38 @@ type Config[E, C, U any] struct {
 	// to "workspace_id" (every entity built so far uses that exact column
 	// name) when left empty.
 	WorkspaceColumn string
+
+	// WorkspaceScopeClause is the join-aware variant of WorkspaceScoped, for
+	// rows with no workspace column of their own whose tenant is reached
+	// through a parent (TRD §7.1 U-S12), e.g.
+	//
+	//	`task_id IN (SELECT id FROM "Tasks" WHERE workspace_id = ?)`
+	//
+	// It must contain exactly one `?`, bound to the caller's ctx.WorkspaceID,
+	// and replaces the `<column> = ?` clause on every path WorkspaceScoped
+	// covers, failing closed identically (empty workspace → empty/not-found).
+	// Setting it implies scoping; WorkspaceScoped need not also be set.
+	//
+	// It does NOT police Create: nothing stops a caller posting a parent id
+	// from another workspace. A resource using it must verify the parent in a
+	// BeforeCreate hook (see tasks' comment/link controllers).
+	WorkspaceScopeClause string
+
+	// ValidateBody, when true, enforces the `binding:"..."` tags on the
+	// Create/Update/UpdatePut DTO (go-playground/validator syntax:
+	// required, oneof=..., gte/lte, ...) and answers 400 without touching
+	// the database when they fail (TRD §7.1 U-G6). Without it the tags are
+	// inert — goose's binder never reads them.
+	//
+	// Opt-in because scaffold apps carry ~400 legacy `binding:"required"`
+	// tags on numeric/struct fields where a zero value is legitimate
+	// (Limit, Priority, Amount); enforcing them everywhere would start
+	// rejecting requests that succeed today. An opting-in resource must not
+	// tag such a field `required` (validator treats 0/false as missing).
+	//
+	// Validation runs on the body as the client sent it, before hooks and
+	// morphs, so defaults a BeforeCreate hook fills in never trip `required`.
+	// PATCH bodies are partial, so on Update a failed `required` is ignored
+	// (an omitted field is not an error) while every other rule still holds.
+	ValidateBody bool
 }
