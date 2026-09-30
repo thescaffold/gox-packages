@@ -93,6 +93,9 @@ func (f *Fake) CountTokens(ctx context.Context, r llm.ChatRequest) (int64, error
 // next validates, records and returns the turn to play.
 func (f *Fake) next(r llm.ChatRequest) (Turn, error) {
 	info := f.info()
+	if f.Info == nil {
+		info.ID = r.Model // a default Fake serves whichever model is asked for
+	}
 	if err := llm.ValidateRequest(info, r); err != nil {
 		return Turn{}, err
 	}
