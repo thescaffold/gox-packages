@@ -1,0 +1,29 @@
+<!-- written by hand -->
+
+ospec: 1
+# Notes demo
+> Free text, comments and code survive.
+
+platform: web
+
+Some words before the first section.
+
+## Users
+- **Visitor** {#visitor}: Someone who looks around.
+  - can browse the catalogue
+  - can send a message
+
+## Notes
+
+Plain paragraph.
+
+Another paragraph.
+
+```
+## not a section
+- not an item
+```
+
+## Ideas for later
+
+Anything under an unknown heading is a note.

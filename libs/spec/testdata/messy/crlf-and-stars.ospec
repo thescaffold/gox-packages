@@ -1,0 +1,19 @@
+# Messy shop
+> Typed by someone in a hurry.
+platform: web
+
+## features
+### Orders
+Households order things.
+for: [[Household]]
+priority: must
+must:
+* Repeat every 1 to 8 weeks.
+* Skipping takes one tap.
+done when:
+- [x] An order appears.
+- [ ] Skipping removes it.
+
+## USERS
+* **Household**: A family.
+* Store admin: Keeps prices up to date.

@@ -9,6 +9,7 @@ use (
 	./libs/core
 	./libs/flags
 	./libs/polylog
+	./libs/spec
 )
 
 // Workspace-only overrides so local development resolves to the in-tree copies

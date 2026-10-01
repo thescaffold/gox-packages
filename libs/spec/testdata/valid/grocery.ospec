@@ -1,0 +1,91 @@
+ospec: 1
+# Grocery Restocking
+> Households choose how often they buy items, and orders are created for them automatically.
+
+platform: web, mobile
+market: Nigeria
+currency: NGN
+language: English
+
+## Users
+- **Household** {#household}: A family that buys groceries every week or month.
+- **Store admin** {#store-admin}: Keeps products and supplier prices up to date.
+
+## Features
+
+### Recurring orders {#recurring-orders}
+Households choose how often they want an item, and an order is created automatically each time.
+for: [[Household]]
+priority: must
+uses: [[Order]], [[Product]]
+must:
+- An item can repeat every 1 to 8 weeks. {#c-91ab}
+- Skipping the next order takes one tap. {#c-04de}
+- When payment fails → retry 3 times over 3 days, then pause the order and tell the household. {#c-77f1}
+done when:
+- [ ] A household sets Milk to repeat weekly and an order appears the next week. {#c-3f2a}
+- [ ] Skipping the next order removes it and keeps the schedule. {#c-b310}
+- [ ] A failed payment retries and then pauses the order. {#c-52c9}
+
+### Pay with a local method {#local-payments}
+Households pay with a card or bank transfer through Paystack.
+for: [[Household]]
+priority: must
+needs: [[Paystack]]
+done when:
+- [ ] A test payment succeeds and the order is marked paid. {#c-1e08}
+
+## Data
+
+### Order {#order}
+- household: [[Household]]
+- items: many [[Order line]]
+- status: one of waiting, paid, delivered, cancelled
+- repeats: yes/no — set when the order came from a schedule
+
+### Order line {#order-line}
+- product: [[Product]]
+- quantity: number
+- price: money
+
+### Product {#product}
+- name: text
+- price: money
+- supplier: text
+
+## Screens
+
+### My orders {#my-orders}
+for: [[Household]]
+shows: [[Order]]
+actions: skip next order, change how often, pause
+device: both
+
+## Integrations
+- **Paystack** {#paystack}: Takes card and transfer payments. needs keys: PAYSTACK_SECRET, PAYSTACK_WEBHOOK_SECRET
+
+## Environments
+
+### staging {#staging}
+purpose: Try changes before customers see them.
+
+### production {#production}
+purpose: What households use.
+protected: yes
+needs keys: PAYSTACK_SECRET, PAYSTACK_WEBHOOK_SECRET, SMTP_HOST
+
+## Limits
+- speed: Pages open in under 2 seconds on a mobile connection. {#c-6a12}
+- privacy: Household addresses are visible only to the store and the courier. {#c-9d40}
+
+## Questions
+? Should recurring purchases charge automatically? {#q-auto-charge}
+- (a) Yes, on the delivery day
+- (b) No, ask the household to confirm each time
+answer: a
+
+## Assumptions
+- Deliveries happen Monday to Saturday. (assumed by Origine) {#a-delivery-days}
+
+## Decisions
+- 2026-09-21 — Failed payments retry 3 times over 3 days. (@isaiah) {#d-retry}

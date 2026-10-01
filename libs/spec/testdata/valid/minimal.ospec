@@ -1,0 +1,11 @@
+ospec: 1
+# Tiny
+> One line.
+
+## Features
+
+### Say hello {#say-hello}
+Greets the visitor.
+priority: must
+done when:
+- [ ] The page says hello. {#c-0001}
