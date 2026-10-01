@@ -63,10 +63,11 @@ says so in the returned conflicts; order within a section or list is mine's.
 | `patch.go`, `apply.go`, `invert.go`, `clone.go` | `SpecPatch` (JSON, App. E.5), atomic `Apply`, exact `Invert` |
 | `diff.go` | `Diff`: changes by id, each semantic or prose-only |
 | `merge.go` | `Merge3`: item-level three-way merge with explicit conflicts |
+| `compile.go` | `Compile`: spec → design graph |
 | `outline.go` | `Outline`: the compact view given to models |
 | `testdata/` | `valid/` (canonical files, a fixed point), `messy/` (hand-typed input and its reviewed `.golden`), `invalid/` (and the expected `.diag`) |
 
-Not here yet (M2-01c): `Compile` to a design graph.
+`Compile(doc)` turns a spec into a `design.Graph` (`libs/design`): users become actors, features capabilities, data entities (with typed fields), screens interfaces, parts services, jobs or interfaces, integrations and environments; "for:", "uses:", "needs:", "shows:", "does:", "owns:" and "talks to:" become edges, every integration's keys are declared in every environment, and every deployable goes to every environment. Items marked `inferred: yes` (or ending "(inferred by Origine)") and what comes from them are marked inferred. A relation that cannot be drawn is left out with a warning, and a value where a setting name or one of a few allowed words belongs never reaches the graph.
 
 Regenerate goldens after a deliberate change with
 `go test -update -run 'Golden|Diagnostics' .` and review the diff.

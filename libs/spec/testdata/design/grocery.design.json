@@ -1,0 +1,280 @@
+{
+  "version": 1,
+  "title": "Grocery Restocking",
+  "summary": "Households choose how often they buy items, and orders are created for them automatically.",
+  "nodes": [
+    {
+      "id": "household",
+      "kind": "actor",
+      "name": "Household",
+      "summary": "A family that buys groceries every week or month."
+    },
+    {
+      "id": "store-admin",
+      "kind": "actor",
+      "name": "Store admin",
+      "summary": "Keeps products and supplier prices up to date."
+    },
+    {
+      "id": "recurring-orders",
+      "kind": "capability",
+      "name": "Recurring orders",
+      "summary": "Households choose how often they want an item, and an order is created automatically each time.",
+      "priority": "must",
+      "rules": [
+        {
+          "id": "c-91ab",
+          "text": "An item can repeat every 1 to 8 weeks."
+        },
+        {
+          "id": "c-04de",
+          "text": "Skipping the next order takes one tap."
+        },
+        {
+          "id": "c-77f1",
+          "text": "When payment fails → retry 3 times over 3 days, then pause the order and tell the household."
+        }
+      ],
+      "criteria": [
+        {
+          "id": "c-3f2a",
+          "text": "A household sets Milk to repeat weekly and an order appears the next week."
+        },
+        {
+          "id": "c-b310",
+          "text": "Skipping the next order removes it and keeps the schedule."
+        },
+        {
+          "id": "c-52c9",
+          "text": "A failed payment retries and then pauses the order."
+        }
+      ]
+    },
+    {
+      "id": "local-payments",
+      "kind": "capability",
+      "name": "Pay with a local method",
+      "summary": "Households pay with a card or bank transfer through Paystack.",
+      "priority": "must",
+      "criteria": [
+        {
+          "id": "c-1e08",
+          "text": "A test payment succeeds and the order is marked paid."
+        }
+      ]
+    },
+    {
+      "id": "order",
+      "kind": "entity",
+      "name": "Order",
+      "fields": [
+        {
+          "name": "household",
+          "type": "reference",
+          "ref": "household"
+        },
+        {
+          "name": "items",
+          "type": "reference",
+          "ref": "order-line",
+          "many": true
+        },
+        {
+          "name": "status",
+          "type": "one of",
+          "options": [
+            "waiting",
+            "paid",
+            "delivered",
+            "cancelled"
+          ]
+        },
+        {
+          "name": "repeats",
+          "type": "yes/no",
+          "note": "set when the order came from a schedule"
+        }
+      ]
+    },
+    {
+      "id": "order-line",
+      "kind": "entity",
+      "name": "Order line",
+      "fields": [
+        {
+          "name": "product",
+          "type": "reference",
+          "ref": "product"
+        },
+        {
+          "name": "quantity",
+          "type": "number"
+        },
+        {
+          "name": "price",
+          "type": "money"
+        }
+      ]
+    },
+    {
+      "id": "product",
+      "kind": "entity",
+      "name": "Product",
+      "fields": [
+        {
+          "name": "name",
+          "type": "text"
+        },
+        {
+          "name": "price",
+          "type": "money"
+        },
+        {
+          "name": "supplier",
+          "type": "text"
+        }
+      ]
+    },
+    {
+      "id": "my-orders",
+      "kind": "interface",
+      "name": "My orders",
+      "device": "both",
+      "actions": [
+        "skip next order",
+        "change how often",
+        "pause"
+      ]
+    },
+    {
+      "id": "paystack",
+      "kind": "integration",
+      "name": "Paystack",
+      "summary": "Takes card and transfer payments",
+      "keys": [
+        "PAYSTACK_SECRET",
+        "PAYSTACK_WEBHOOK_SECRET"
+      ]
+    },
+    {
+      "id": "staging",
+      "kind": "environment",
+      "name": "staging",
+      "summary": "Try changes before customers see them.",
+      "keys": [
+        "PAYSTACK_SECRET",
+        "PAYSTACK_WEBHOOK_SECRET"
+      ]
+    },
+    {
+      "id": "production",
+      "kind": "environment",
+      "name": "production",
+      "summary": "What households use.",
+      "protected": true,
+      "keys": [
+        "PAYSTACK_SECRET",
+        "PAYSTACK_WEBHOOK_SECRET",
+        "SMTP_HOST"
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from": "household",
+      "to": "local-payments",
+      "kind": "uses",
+      "source": "local-payments",
+      "note": "is for"
+    },
+    {
+      "from": "household",
+      "to": "my-orders",
+      "kind": "uses",
+      "source": "my-orders",
+      "note": "is for"
+    },
+    {
+      "from": "household",
+      "to": "recurring-orders",
+      "kind": "uses",
+      "source": "recurring-orders",
+      "note": "is for"
+    },
+    {
+      "from": "local-payments",
+      "to": "paystack",
+      "kind": "uses",
+      "source": "local-payments",
+      "note": "needs"
+    },
+    {
+      "from": "my-orders",
+      "to": "production",
+      "kind": "deploys_to",
+      "source": "production",
+      "note": "runs in"
+    },
+    {
+      "from": "my-orders",
+      "to": "staging",
+      "kind": "deploys_to",
+      "source": "staging",
+      "note": "runs in"
+    },
+    {
+      "from": "my-orders",
+      "to": "order",
+      "kind": "uses",
+      "source": "my-orders",
+      "note": "shows"
+    },
+    {
+      "from": "order",
+      "to": "household",
+      "kind": "uses",
+      "source": "order",
+      "note": "has a field “household” that points at"
+    },
+    {
+      "from": "order",
+      "to": "order-line",
+      "kind": "uses",
+      "source": "order",
+      "note": "has a field “items” that points at"
+    },
+    {
+      "from": "order-line",
+      "to": "product",
+      "kind": "uses",
+      "source": "order-line",
+      "note": "has a field “product” that points at"
+    },
+    {
+      "from": "recurring-orders",
+      "to": "order",
+      "kind": "uses",
+      "source": "recurring-orders",
+      "note": "uses"
+    },
+    {
+      "from": "recurring-orders",
+      "to": "product",
+      "kind": "uses",
+      "source": "recurring-orders",
+      "note": "uses"
+    }
+  ],
+  "limits": [
+    {
+      "id": "c-6a12",
+      "kind": "speed",
+      "text": "Pages open in under 2 seconds on a mobile connection."
+    },
+    {
+      "id": "c-9d40",
+      "kind": "privacy",
+      "text": "Household addresses are visible only to the store and the courier."
+    }
+  ]
+}

@@ -1,0 +1,2 @@
+go test fuzz v1
+string("## IntegrAtions\n* **0**:\x94needs keYs:")
