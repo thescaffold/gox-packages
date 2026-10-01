@@ -107,7 +107,10 @@ type Event struct {
 	// stopped (EventStepEnd). The message is already stored when this is sent.
 	Message    *core.Message
 	StopReason core.StopReason
-	Outcome    *Outcome // EventRunEnd
+	// Model and Provider name what answered the step (EventStepEnd), so a
+	// listener can count tokens and cost by model.
+	Model, Provider string
+	Outcome         *Outcome // EventRunEnd
 }
 
 // Config wires the loop to its collaborators.
@@ -445,7 +448,7 @@ func (r *run) step() (*core.ChatResponse, string, *Outcome) {
 	}
 	u := resp.Usage
 	msg := resp.Message
-	r.a.emit(Event{Type: EventStepEnd, RunID: r.in.RunID, Step: idx, Usage: &u, Cost: cost, Message: &msg, StopReason: resp.StopReason})
+	r.a.emit(Event{Type: EventStepEnd, RunID: r.in.RunID, Step: idx, Usage: &u, Cost: cost, Message: &msg, StopReason: resp.StopReason, Model: resp.Model, Provider: resp.Provider})
 	return resp, stepID, nil
 }
 

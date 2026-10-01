@@ -607,6 +607,11 @@ func TestEventsDescribeTheRun(t *testing.T) {
 			t.Fatalf("a step_end event must carry the assistant message and the stop reason: %+v", ev)
 		}
 	}
+	for _, ev := range e.events {
+		if ev.Type == agent.EventStepEnd && ev.Model == "" {
+			t.Fatalf("a step_end event must name the model that answered (for metrics by model): %+v", ev)
+		}
+	}
 	last := e.events[len(e.events)-1]
 	if last.Outcome == nil || last.Outcome.Reason != agent.ReasonCompleted {
 		t.Fatalf("%+v", last)
