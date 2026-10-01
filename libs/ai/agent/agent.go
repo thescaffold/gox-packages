@@ -95,19 +95,19 @@ const (
 
 // Event is one thing that happened, for live views. Listeners must not block.
 type Event struct {
-	Type    EventType
-	RunID   string
-	Step    int
-	Stream  *llm.StreamEvent // EventModel
-	Call    *core.ToolCall   // EventToolStart, EventToolResult
-	Result  *core.ToolResult // EventToolResult
-	Usage   *core.Usage      // EventStepEnd
-	Cost    core.MicroUSD    // EventStepEnd: this step's cost
+	Type   EventType
+	RunID  string
+	Step   int
+	Stream *llm.StreamEvent // EventModel
+	Call   *core.ToolCall   // EventToolStart, EventToolResult
+	Result *core.ToolResult // EventToolResult
+	Usage  *core.Usage      // EventStepEnd
+	Cost   core.MicroUSD    // EventStepEnd: this step's cost
 	// Message and StopReason are the step's assistant message and why it
 	// stopped (EventStepEnd). The message is already stored when this is sent.
 	Message    *core.Message
 	StopReason core.StopReason
-	Outcome *Outcome         // EventRunEnd
+	Outcome    *Outcome // EventRunEnd
 }
 
 // Config wires the loop to its collaborators.
