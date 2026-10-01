@@ -660,6 +660,12 @@ func TestRegistry(t *testing.T) {
 		}()
 		agent.NewRegistry(echo("x"), echo("x"))
 	}()
+	if tl, ok := r.Tool("a"); !ok || tl.Def().Name != "a" {
+		t.Error("Tool lookup")
+	}
+	if _, ok := r.Tool("zzz"); ok {
+		t.Error("Tool found a missing tool")
+	}
 	if r.ResumeSafe("a") || r.ResumeSafe("nope") {
 		t.Error("ResumeSafe default must be false")
 	}

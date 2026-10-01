@@ -128,6 +128,14 @@ func (r *Registry) Tools() []core.ToolDef {
 	return out
 }
 
+// Tool returns a registered tool by name.
+func (r *Registry) Tool(name string) (Tool, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	t, ok := r.tools[name]
+	return t, ok
+}
+
 func (r *Registry) ResumeSafe(name string) bool {
 	r.mu.RLock()
 	t, ok := r.tools[name]
