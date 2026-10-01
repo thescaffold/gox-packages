@@ -67,8 +67,13 @@ func rewriteRefs(s string, f func(inner string) (string, bool)) string {
 // eachText calls fn with a pointer to every piece of authored text that may hold
 // references. Raw text and comments are left alone.
 func (d *Doc) eachText(fn func(*string)) {
+	d.eachTextAt(func(s *string, _ int) { fn(s) })
+}
+
+// eachTextAt is eachText with the line each piece was read from.
+func (d *Doc) eachTextAt(fn func(*string, int)) {
 	for i := range d.Settings {
-		fn(&d.Settings[i].Value)
+		fn(&d.Settings[i].Value, d.Settings[i].Line)
 	}
 	for _, s := range d.Sections {
 		for _, n := range s.Nodes {
@@ -77,36 +82,36 @@ func (d *Doc) eachText(fn func(*string)) {
 	}
 }
 
-func eachNodeText(n Node, fn func(*string)) {
+func eachNodeText(n Node, fn func(*string, int)) {
 	switch n := n.(type) {
 	case *Para:
 		for i := range n.Lines {
-			fn(&n.Lines[i])
+			fn(&n.Lines[i], n.Line+i)
 		}
 	case *Prop:
-		fn(&n.Value)
+		fn(&n.Value, n.Line)
 	case *ListProp:
 		for _, e := range n.Entries {
-			fn(&e.Text)
+			fn(&e.Text, e.Line)
 		}
 	case *Child:
-		fn(&n.Text)
+		fn(&n.Text, n.Line)
 		for i := range n.Cont {
-			fn(&n.Cont[i])
+			fn(&n.Cont[i], n.Line)
 		}
 	case *Item:
-		fn(&n.Title)
-		fn(&n.Text)
+		fn(&n.Title, n.Line)
+		fn(&n.Text, n.Line)
 		for i := range n.Cont {
-			fn(&n.Cont[i])
+			fn(&n.Cont[i], n.Line)
 		}
 		for _, b := range n.Body {
 			eachNodeText(b, fn)
 		}
 		for i := range n.Options {
-			fn(&n.Options[i].Text)
+			fn(&n.Options[i].Text, n.Options[i].Line)
 		}
-		fn(&n.Answer)
+		fn(&n.Answer, n.Line)
 	}
 }
 
@@ -187,4 +192,10 @@ func (d *Doc) Resolve(ref string) (string, bool) {
 		}
 	}
 	return id, found == 1
+}
+
+// mapRefs rewrites references in all authored text: f gets the inside of each
+// "[[...]]" and may return a replacement.
+func (d *Doc) mapRefs(f func(inner string) (string, bool)) {
+	d.eachText(func(s *string) { *s = rewriteRefs(*s, f) })
 }

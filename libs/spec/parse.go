@@ -136,7 +136,7 @@ func (p *parser) comment() *Comment {
 			return c
 		}
 	}
-	p.diag(t.n, 1, Warning, "comment-unclosed", "This comment is never closed with -->, so everything after it is part of the comment. It was closed at the end of the file.", nil)
+	p.diag(t.n, 1, Error, "comment-unclosed", "This comment is never closed with -->, so everything after it is part of the comment. It was closed at the end of the file.", nil)
 	c.Lines[len(c.Lines)-1] += "-->"
 	return c
 }
@@ -161,7 +161,7 @@ func (p *parser) fence() *Raw {
 			return r
 		}
 	}
-	p.diag(t.n, 1, Warning, "fence-unclosed", "This code block is never closed, so everything after it was kept as written. It was closed at the end of the file.", nil)
+	p.diag(t.n, 1, Error, "fence-unclosed", "This code block is never closed, so everything after it was kept as written. It was closed at the end of the file.", nil)
 	r.Lines = append(r.Lines, strings.Repeat(string(ch), n))
 	return r
 }

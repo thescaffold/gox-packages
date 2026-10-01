@@ -29,6 +29,27 @@ out := spec.Print(doc)                // canonical text
   new one. Given the previous revision, a renamed item keeps its id and every
   `[[Old title]]` becomes `[[New title]]`.
 
+## Editing a spec
+
+```go
+patch, _ := spec.ParsePatch(jsonBytes)    // {"base":17,"ops":[{"op":"add",...}]}
+patch.Check(true)                          // every step has a target and a one-line reason
+next, err := spec.Apply(doc, patch)        // atomic: all steps or none; error names the step
+undo, _ := spec.Invert(doc, patch)         // apply(next, undo) prints exactly as doc
+changes := spec.Diff(doc, next)            // by id; spec.Semantic(changes) drops wording-only ones
+merged, conflicts := spec.Merge3(base, mine, theirs)
+diags := spec.Validate(merged)             // spec.HasErrors, spec.HasSecret
+```
+
+Operations: `add`, `set`, `text`, `move`, `remove`, `rename`, `split`, `merge`,
+`answer`. Each is addressed by id. `Invert` also uses `replace`, `restore`,
+`prune` and `section` to put things back exactly. A patch that leaves a reference
+pointing nowhere still applies (that is a warning, not an error); one that would
+leave a repeated id does not.
+
+`Merge3` keeps *mine* wherever both sides changed the same thing differently and
+says so in the returned conflicts; order within a section or list is mine's.
+
 ## Layout
 
 | File | What it does |
@@ -38,10 +59,14 @@ out := spec.Print(doc)                // canonical text
 | `print.go` | canonical text |
 | `canon.go` | `Canonicalize` |
 | `refs.go` | `[[references]]`, `Addressables`, `Resolve` |
+| `validate.go`, `secrets.go` | `Validate` (errors block a commit; warnings do not), `ScanSecrets` |
+| `patch.go`, `apply.go`, `invert.go`, `clone.go` | `SpecPatch` (JSON, App. E.5), atomic `Apply`, exact `Invert` |
+| `diff.go` | `Diff`: changes by id, each semantic or prose-only |
+| `merge.go` | `Merge3`: item-level three-way merge with explicit conflicts |
+| `outline.go` | `Outline`: the compact view given to models |
 | `testdata/` | `valid/` (canonical files, a fixed point), `messy/` (hand-typed input and its reviewed `.golden`), `invalid/` (and the expected `.diag`) |
 
-Not here yet (M2-01b and M2-01c): `Validate`, `Diff`, `SpecPatch` `Apply`/`Invert`,
-`Merge3`, and `Compile` to a design graph.
+Not here yet (M2-01c): `Compile` to a design graph.
 
 Regenerate goldens after a deliberate change with
 `go test -update -run 'Golden|Diagnostics' .` and review the diff.

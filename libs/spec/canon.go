@@ -52,12 +52,12 @@ func eachIDSlot(d *Doc, fn func(id *string, want func() string, line int)) {
 					_, identified := identifiedLists[b.Key]
 					for _, e := range b.Entries {
 						if identified || e.ID != "" {
-							fn(&e.ID, func() string { return anon("entry:"+b.Key, e.Text) }, e.Line)
+							fn(&e.ID, func() string { return anon("entry:"+b.Key+":"+it.ID, e.Text) }, e.Line)
 						}
 					}
 				case *Child:
 					if b.ID != "" {
-						fn(&b.ID, func() string { return anon("child", b.Text) }, b.Line)
+						fn(&b.ID, func() string { return anon("child:"+it.ID, b.Text) }, b.Line)
 					}
 				}
 			}

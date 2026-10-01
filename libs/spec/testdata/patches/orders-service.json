@@ -1,0 +1,15 @@
+{
+  "base": 17,
+  "summary": "Make Orders its own service",
+  "ops": [
+    {"op": "add", "parent": "parts", "kind": "part", "id": "orders-service", "title": "Orders",
+     "props": {"does": ["[[#recurring-orders]]"], "owns": ["[[#order]]", "[[#order-line]]"]},
+     "reason": "Orders should scale and change on its own"},
+    {"op": "set", "item": "recurring-orders", "prop": "uses", "remove": ["[[#order]]"],
+     "reason": "The feature now reaches orders through the new service"},
+    {"op": "set", "item": "recurring-orders", "prop": "needs", "add": ["[[#orders-service]]"],
+     "reason": "It depends on the new service"},
+    {"op": "add", "parent": "decisions", "kind": "decision",
+     "text": "Orders is a separate service so it can scale on its own. (@you)", "reason": "Record why"}
+  ]
+}
