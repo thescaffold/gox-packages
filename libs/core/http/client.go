@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -109,14 +111,19 @@ func (c *Client) request(method, rawURL string, body any, queries, headers map[s
 		}
 
 		var bodyReader io.Reader
+		reqHeaders := headers
 		if body != nil && method != http.MethodGet {
-			data, err := json.Marshal(body)
+			data, contentType, err := encodeBody(body, headers["content-type"])
 			if err == nil {
 				bodyReader = bytes.NewReader(data)
+				if contentType != headers["content-type"] {
+					reqHeaders = copyHeaders(headers)
+					reqHeaders["content-type"] = contentType
+				}
 			}
 		}
 
-		success, statusCode, statusText, errBody, respData = c.do(method, rawURL, bodyReader, headers, jsxMode)
+		success, statusCode, statusText, errBody, respData = c.do(method, rawURL, bodyReader, reqHeaders, jsxMode)
 		if success {
 			return success, statusCode, statusText, errBody, respData
 		}
@@ -188,4 +195,93 @@ func toStringMap(v any) map[string]string {
 		}
 	}
 	return out
+}
+
+func copyHeaders(h map[string]string) map[string]string {
+	out := make(map[string]string, len(h))
+	for k, v := range h {
+		out[k] = v
+	}
+	return out
+}
+
+// encodeBody serialises body for the declared content type: a form type sends a
+// real form (multipart with its boundary, or url-encoded), anything else JSON.
+// It returns the content type to send, which carries the boundary for multipart.
+func encodeBody(body any, contentType string) ([]byte, string, error) {
+	mediaType := strings.ToLower(strings.TrimSpace(strings.SplitN(contentType, ";", 2)[0]))
+	switch mediaType {
+	case "application/x-www-form-urlencoded":
+		fields, err := formFields(body)
+		if err != nil {
+			return nil, contentType, err
+		}
+		v := url.Values{}
+		for k, vals := range fields {
+			for _, x := range vals {
+				v.Add(k, x)
+			}
+		}
+		return []byte(v.Encode()), contentType, nil
+	case "multipart/form-data":
+		fields, err := formFields(body)
+		if err != nil {
+			return nil, contentType, err
+		}
+		var buf bytes.Buffer
+		w := multipart.NewWriter(&buf)
+		for k, vals := range fields {
+			for _, x := range vals {
+				if err := w.WriteField(k, x); err != nil {
+					return nil, contentType, err
+				}
+			}
+		}
+		if err := w.Close(); err != nil {
+			return nil, contentType, err
+		}
+		return buf.Bytes(), w.FormDataContentType(), nil
+	}
+	data, err := json.Marshal(body)
+	return data, contentType, err
+}
+
+// formFields flattens a JSON-shaped body into form fields: a scalar becomes one
+// value, a list becomes repeated values, and a nested value is sent as JSON.
+func formFields(body any) (map[string][]string, error) {
+	raw, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return nil, fmt.Errorf("http: a form body must be an object: %w", err)
+	}
+	out := make(map[string][]string, len(m))
+	for k, v := range m {
+		switch t := v.(type) {
+		case nil:
+			continue
+		case []any:
+			for _, e := range t {
+				out[k] = append(out[k], formScalar(e))
+			}
+		default:
+			out[k] = []string{formScalar(t)}
+		}
+	}
+	return out, nil
+}
+
+func formScalar(v any) string {
+	switch t := v.(type) {
+	case string:
+		return t
+	case float64:
+		return strconv.FormatFloat(t, 'f', -1, 64)
+	case bool:
+		return strconv.FormatBool(t)
+	}
+	b, _ := json.Marshal(v)
+	return string(b)
 }
