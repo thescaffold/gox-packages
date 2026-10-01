@@ -5,10 +5,11 @@ import (
 )
 
 // ListDto is the input for List and FindByIds handlers.
-// Queries holds all raw query params (populated by QueriesMiddleware via context:"queries").
+// Queries holds all raw query params. The goose binder fills it from the request
+// (queries:"all"); a QueriesMiddleware value (context:"queries") is still honoured.
 // Individual named fields are kept for clarity but the full map drives MakeFilter.
 type ListDto struct {
-	Queries map[string]string `context:"queries"`
+	Queries map[string]string `queries:"all" context:"queries"`
 	Ctx     ntxctx.NTXContext `context:"ntx"`
 }
 

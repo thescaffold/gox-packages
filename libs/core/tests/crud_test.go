@@ -3,8 +3,10 @@ package tests
 import (
 	"errors"
 	"net/http"
+	"strings"
 	"testing"
 
+	"github.com/awesome-goose/goose/io/input"
 	test "github.com/awesome-goose/goose/testing"
 	"github.com/awesome-goose/goose/types"
 	ntxctx "github.com/thescaffold/gox-packages/libs/core/context"
@@ -733,4 +735,35 @@ func (s *CrudSuite) TestCreate_PlainMorphError_StaysA500() {
 	})
 	out := r.Create(&crud.CreateDto[Item]{Body: Item{Name: "x"}})
 	s.T.Expect(out.Code()).ToEqual(http.StatusInternalServerError)
+}
+
+// ── list filters reach the query (found live, PLAN M1-42) ─────────────────────
+//
+// Nothing attached QueriesMiddleware to a route, so ListDto.Queries was always
+// empty and every CRUD list ignored its filters, `query=` search and `perPage`:
+// a project page listed every system in the workspace, and a list was capped at
+// 12 rows however many were asked for. The binder now fills Queries itself.
+
+func (s *CrudSuite) TestListDto_BoundFromARequest_CarriesEveryQueryParameter() {
+	ctx := test.NewMockContext()
+	ctx.MockRequest().WithQueries(map[string]string{"project_id": "p1", "perPage": "50", "query": "bread"})
+	var dto crud.ListDto
+	s.T.Expect(input.NewInput(ctx).Populate(&dto) == nil).ToBeTrue()
+	s.T.Expect(dto.Queries["project_id"]).ToEqual("p1")
+	s.T.Expect(dto.Queries["perPage"]).ToEqual("50")
+	s.T.Expect(dto.Queries["query"]).ToEqual("bread")
+}
+
+func (s *CrudSuite) TestList_FilterFromARequestBecomesAWhereClause() {
+	r, entity := newItemResource(crud.Config[Item, Item, Item]{Name: "Item", WorkspaceScoped: true})
+	entity.items = []Item{{ID: "1", Name: "A"}}
+	ctx := test.NewMockContext()
+	ctx.MockRequest().WithQueries(map[string]string{"project_id": "p1"})
+	var dto crud.ListDto
+	s.T.Expect(input.NewInput(ctx).Populate(&dto) == nil).ToBeTrue()
+	dto.Ctx = ntxctx.NTXContext{WorkspaceID: "ws-a"}
+	out := r.List(&dto)
+	s.T.Expect(out.Code()).ToEqual(http.StatusOK)
+	s.T.Expect(strings.Contains(entity.lastQuery, "project_id")).ToBeTrue()
+	s.T.Expect(strings.Contains(entity.lastQuery, "workspace_id")).ToBeTrue()
 }
