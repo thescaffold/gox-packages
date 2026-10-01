@@ -103,6 +103,10 @@ type Event struct {
 	Result  *core.ToolResult // EventToolResult
 	Usage   *core.Usage      // EventStepEnd
 	Cost    core.MicroUSD    // EventStepEnd: this step's cost
+	// Message and StopReason are the step's assistant message and why it
+	// stopped (EventStepEnd). The message is already stored when this is sent.
+	Message    *core.Message
+	StopReason core.StopReason
 	Outcome *Outcome         // EventRunEnd
 }
 
@@ -440,7 +444,8 @@ func (r *run) step() (*core.ChatResponse, string, *Outcome) {
 		return nil, "", r.end(ReasonError, core.RunFailed, err.Error())
 	}
 	u := resp.Usage
-	r.a.emit(Event{Type: EventStepEnd, RunID: r.in.RunID, Step: idx, Usage: &u, Cost: cost})
+	msg := resp.Message
+	r.a.emit(Event{Type: EventStepEnd, RunID: r.in.RunID, Step: idx, Usage: &u, Cost: cost, Message: &msg, StopReason: resp.StopReason})
 	return resp, stepID, nil
 }
 

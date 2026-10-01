@@ -602,6 +602,11 @@ func TestEventsDescribeTheRun(t *testing.T) {
 	if strings.Join(kinds, " ") != want {
 		t.Fatalf("\n got %s\nwant %s", strings.Join(kinds, " "), want)
 	}
+	for _, ev := range e.events {
+		if ev.Type == agent.EventStepEnd && (ev.Message == nil || ev.StopReason == "" || ev.Message.Role != core.RoleAssistant) {
+			t.Fatalf("a step_end event must carry the assistant message and the stop reason: %+v", ev)
+		}
+	}
 	last := e.events[len(e.events)-1]
 	if last.Outcome == nil || last.Outcome.Reason != agent.ReasonCompleted {
 		t.Fatalf("%+v", last)
