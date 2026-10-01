@@ -20,14 +20,14 @@ func TestPauseThenResumeRunsTheCallOnce(t *testing.T) {
 	var ran atomic.Int64
 	guarded := funcTool{name: "deploy", fn: func(context.Context, core.ToolCall) (core.Content, error) {
 		if !gate.Load() {
-			return nil, &agent.PauseError{Status: core.RunAwaitingApproval, Detail: "needs approval apr_1"}
+			return nil, &agent.PauseError{Status: core.RunAwaitingApproval, Detail: "needs approval apr_1", Ref: "apr_1"}
 		}
 		ran.Add(1)
 		return core.Text("deployed"), nil
 	}}
 	e := newEnv(t, []aitesting.Turn{call("d1", "deploy", map[string]any{"env": "prod"}), aitesting.Reply("all done")}, guarded)
 	out := e.run(t, "ship it")
-	if out.Reason != agent.ReasonPaused || out.Status != core.RunAwaitingApproval || out.Detail != "needs approval apr_1" {
+	if out.Reason != agent.ReasonPaused || out.Status != core.RunAwaitingApproval || out.Detail != "needs approval apr_1" || out.Ref != "apr_1" {
 		t.Fatalf("%+v", out)
 	}
 	if e.status() != core.RunAwaitingApproval {

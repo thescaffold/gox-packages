@@ -49,6 +49,9 @@ type PauseError struct {
 	// Status is awaiting_approval or blocked_credits.
 	Status core.RunStatus
 	Detail string
+	// Ref identifies what the run waits for (an approval id), so whoever resumes
+	// runs can tell when the wait is over without parsing Detail.
+	Ref string
 }
 
 func (e *PauseError) Error() string { return fmt.Sprintf("agent: paused (%s): %s", e.Status, e.Detail) }

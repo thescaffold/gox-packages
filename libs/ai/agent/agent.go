@@ -61,6 +61,8 @@ type Outcome struct {
 	Cost  core.MicroUSD
 	// Budget names which limit stopped the run (ReasonBudget).
 	Budget string
+	// Ref is what a paused run waits for (ReasonPaused), from PauseError.Ref.
+	Ref string
 }
 
 // Text is the final message's text, or "".
@@ -608,7 +610,9 @@ func (r *run) runTools(uses []core.ToolUseBlock, resp *core.ChatResponse) *Outco
 			if serr := r.saveCallState(stepID, call, core.ToolResult{}, 0, false, true); serr != nil {
 				return r.fail(ReasonError, serr.Error())
 			}
-			return r.end(ReasonPaused, pe.Status, pe.Detail)
+			o := r.end(ReasonPaused, pe.Status, pe.Detail)
+			o.Ref = pe.Ref
+			return o
 		case err != nil:
 			if r.cancelled() {
 				return finish(r.cancelOutcomeNoSettle())
