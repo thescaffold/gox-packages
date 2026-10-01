@@ -396,6 +396,13 @@ func (r *run) step() (*core.ChatResponse, string, *Outcome) {
 		resp, err = r.consume(ch, idx)
 	}
 	if err != nil {
+		var pe *PauseError
+		if errors.As(err, &pe) {
+			// the model asked the run to wait (out of credits) before any call was made
+			o := r.end(ReasonPaused, pe.Status, pe.Detail)
+			o.Ref = pe.Ref
+			return nil, "", o
+		}
 		if r.cancelled() {
 			return nil, "", r.cancelOutcome()
 		}

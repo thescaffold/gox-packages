@@ -11,7 +11,9 @@ import (
 // Model is what the loop streams from: one driver, or a policy-routed chain.
 type Model interface {
 	// Stream starts a call. The request's Model field is set by the
-	// implementation when it chooses the model.
+	// implementation when it chooses the model. Returning a *PauseError
+	// pauses the run instead of failing it (a metering wrapper does this when
+	// the run is out of credits).
 	Stream(ctx context.Context, req llm.ChatRequest) (<-chan llm.StreamEvent, error)
 	// Price costs a finished response; an error means the model is unpriced.
 	Price(resp *core.ChatResponse) (core.MicroUSD, error)

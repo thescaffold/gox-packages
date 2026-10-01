@@ -11,6 +11,7 @@ import (
 
 	"github.com/thescaffold/gox-packages/libs/ai/agent"
 	"github.com/thescaffold/gox-packages/libs/ai/core"
+	"github.com/thescaffold/gox-packages/libs/ai/llm"
 	aitesting "github.com/thescaffold/gox-packages/libs/ai/testing"
 )
 
@@ -313,5 +314,37 @@ func TestKillingTheWorkerAtAnyWriteResumesWithEachToolRunExactlyOnce(t *testing.
 			}
 			validHistory(t, e.history(t), true)
 		})
+	}
+}
+
+type gatedModel struct {
+	agent.Model
+	open *atomic.Bool
+}
+
+func (g gatedModel) Stream(ctx context.Context, req llm.ChatRequest) (<-chan llm.StreamEvent, error) {
+	if !g.open.Load() {
+		return nil, &agent.PauseError{Status: core.RunBlockedCredits, Detail: "out of credits", Ref: "credits"}
+	}
+	return g.Model.Stream(ctx, req)
+}
+
+// A model that cannot be called yet (no credits) pauses the run before any
+// call, costs nothing, and the run resumes once it can.
+func TestAModelThatRefusesToStartPausesTheRunAndResumesLater(t *testing.T) {
+	var open atomic.Bool
+	e := newEnv(t, []aitesting.Turn{aitesting.Reply("worth the wait")})
+	e.cfg.Model = gatedModel{Model: e.cfg.Model, open: &open}
+	out := e.run(t, "go")
+	if out.Reason != agent.ReasonPaused || out.Status != core.RunBlockedCredits || out.Ref != "credits" || e.fake.CallCount() != 0 {
+		t.Fatalf("%+v calls=%d", out, e.fake.CallCount())
+	}
+	if e.status() != core.RunBlockedCredits || len(e.mem.Usage()) != 0 {
+		t.Fatalf("status=%s usage=%d", e.status(), len(e.mem.Usage()))
+	}
+	open.Store(true)
+	out, err := e.resume(t)
+	if err != nil || out.Reason != agent.ReasonCompleted || out.Text() != "worth the wait" {
+		t.Fatalf("%+v %v", out, err)
 	}
 }
