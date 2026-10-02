@@ -27,6 +27,8 @@ type Doc struct {
 	// between the header and the first section.
 	Pre, Intro []Node
 	Sections   []*Section
+
+	tix *titleIndex // see titles()
 }
 
 // Setting is one "key: value" line in the header.

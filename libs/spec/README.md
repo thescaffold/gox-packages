@@ -72,3 +72,34 @@ says so in the returned conflicts; order within a section or list is mine's.
 
 Regenerate goldens after a deliberate change with
 `go test -update -run 'Golden|Diagnostics' .` and review the diff.
+
+## In the browser (WebAssembly)
+
+`wasm/` builds the same Go code for the browser: `GOOS=js GOARCH=wasm go build -ldflags="-s -w" -o spec.wasm ./wasm`
+(with `wasm_exec.js` from `$(go env GOROOT)/lib/wasm`). It exposes one function, `ospecAnalyze(text)`, which returns the JSON of
+`spec.Analyze`: the canonical text, the plain-language notes (parse, validate, secrets), the outline and the title. The server calls the very
+same `Analyze`, so there is one parser, never two.
+
+**Decision (M2-01d): the editor runs the WebAssembly build; the server stays the authority.** Notes appear as the person types, with no round trip,
+and the commit path still parses and validates on the server with the same code, so what the editor showed is what the commit decides. If the
+WebAssembly file cannot be loaded (blocked, offline, old browser) the editor falls back to asking the server, which gives the same answers.
+
+| Measured | Result |
+|---|---|
+| File size | 3.4 MB raw, 953 KB gzip -9, **719 KB brotli -q 11** |
+| Load, Chromium (localhost, cache cold), compile + instantiate | 7 to 12 ms; the download is the cost: 719 KB is about 0.6 s at 10 Mbps, once, then cached |
+| First call | about 1 to 10 ms |
+| Per call, a 2.7 KB document (Chromium) | median 0.5 ms, p95 under 1.3 ms |
+| Per call, 531 KB of text (Node) | 180 ms; typical specs are 5 to 60 KB |
+
+Serve it with brotli, `Cache-Control: immutable` and a content-hashed file name, and load it when the Editor mode opens, not at page load.
+TinyGo was not tried: it would be a second compiler with its own gaps in `reflect` and `encoding/json`, which is the "second parser" risk the
+differential test exists to rule out, and 719 KB is acceptable.
+
+**Differential test** (`TestWasmMatchesNative`, skipped under `-short` or without Node): builds the browser file, runs the example documents plus 600 seeded
+random mutations of them (cut, repeated, swapped chunks, stray bytes, odd characters) and a 531 KB document through it under Node, and
+requires every answer to equal the native one byte for byte. 616 of 616 are identical.
+
+Found while measuring (fixed): resolving `[[references]]` re-read every title once per reference, and finding a free `-2`, `-3` id restarted from 2 each time, so a long spec
+or a spec with many same-named items grew quadratically (a 160 KB document took 41 ms, a 1 MB one took 1.1 s). The title index is now kept on the
+document and verified on each use, `Validate` and `Compile` resolve against one snapshot, and the id search resumes where it stopped. 160 KB takes 12 ms; 4 MB, 410 ms.

@@ -22,7 +22,7 @@ import (
 func Compile(d *Doc) (*design.Graph, []Diagnostic) {
 	c := d.Clone()
 	Canonicalize(c, nil)
-	cc := &compiler{doc: c, g: &design.Graph{Version: design.Version, Title: c.Title, Summary: c.Summary}, seen: map[string]bool{}}
+	cc := &compiler{doc: c, g: &design.Graph{Version: design.Version, Title: c.Title, Summary: c.Summary}, seen: map[string]bool{}, res: c.resolver()}
 	cc.nodes()
 	cc.fields()
 	cc.environmentKeys()
@@ -40,6 +40,7 @@ type compiler struct {
 	diags []Diagnostic
 	seen  map[string]bool // edges already drawn
 	items map[string]*Item
+	res   *resolver
 }
 
 func (c *compiler) diag(line int, sev Severity, code, msg string) {
@@ -339,7 +340,7 @@ func article(word string) string {
 
 // resolve finds the node a reference names, reporting what could not be found.
 func (c *compiler) resolve(r Ref, line int, who string) []string {
-	ids := c.doc.refMatches(r)
+	ids := c.res.matches(r)
 	switch len(ids) {
 	case 1:
 		if c.g.Node(ids[0]) == nil {

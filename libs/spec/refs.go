@@ -182,16 +182,11 @@ func (d *Doc) Resolve(ref string) (string, bool) {
 		}
 		return "", false
 	}
-	want, found, id := normTitle(ref), 0, ""
-	for _, s := range d.Sections {
-		for _, n := range s.Nodes {
-			if it, ok := n.(*Item); ok && it.Title != "" && it.ID != "" && normTitle(it.Title) == want {
-				found++
-				id = it.ID
-			}
-		}
+	ids := d.titles().byTitle[normTitle(ref)]
+	if len(ids) != 1 {
+		return "", false
 	}
-	return id, found == 1
+	return ids[0], true
 }
 
 // mapRefs rewrites references in all authored text: f gets the inside of each

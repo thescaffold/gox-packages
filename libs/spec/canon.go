@@ -32,9 +32,15 @@ func Canonicalize(d *Doc, base *Doc) []Fix {
 	return fixes
 }
 
-type idSet struct{ used map[string]bool }
+type idSet struct {
+	used map[string]bool
+	// next remembers, per base, the suffix last handed out. Ids are only ever
+	// added, so everything below it is still taken and the search can resume
+	// there: a thousand copies of one title cost a thousand steps, not half a million.
+	next map[string]int
+}
 
-func newIDSet(*Doc) *idSet { return &idSet{used: map[string]bool{}} }
+func newIDSet(*Doc) *idSet { return &idSet{used: map[string]bool{}, next: map[string]int{}} }
 
 // eachIDSlot visits every place that can hold an id, in document order, with
 // the id that place would like to have.
@@ -128,8 +134,15 @@ func (s *idSet) assign(d *Doc) []Fix {
 // fresh returns base, or base with -2, -3 ... until it is unused, and marks it used.
 func (s *idSet) fresh(base string) string {
 	id := base
-	for n := 2; s.used[id]; n++ {
-		id = base + "-" + itoa(n)
+	n := 2
+	if s.used[id] {
+		if h := s.next[base]; h > n {
+			n = h
+		}
+		for id = base + "-" + itoa(n); s.used[id]; id = base + "-" + itoa(n) {
+			n++
+		}
+		s.next[base] = n
 	}
 	s.used[id] = true
 	return id

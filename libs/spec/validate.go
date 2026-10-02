@@ -29,9 +29,10 @@ func Validate(d *Doc) []Diagnostic {
 	}
 
 	// references
+	res := d.resolver()
 	d.eachTextAt(func(s *string, line int) {
 		for _, r := range References(*s) {
-			switch ids := d.refMatches(r); len(ids) {
+			switch ids := res.matches(r); len(ids) {
 			case 1:
 			case 0:
 				what := "“" + r.Inner + "”"
@@ -88,16 +89,83 @@ func (d *Doc) refMatches(r Ref) []string {
 		}
 		return nil
 	}
-	want := normTitle(r.Inner)
-	var ids []string
+	return append([]string(nil), d.titles().byTitle[normTitle(r.Inner)]...)
+}
+
+// resolver is a snapshot for resolving many references against a document that
+// is not being changed meanwhile (Validate, Compile): each lookup is a map read.
+type resolver struct {
+	ids     map[string]bool
+	byTitle map[string][]string
+}
+
+func (d *Doc) resolver() *resolver {
+	r := &resolver{ids: map[string]bool{}, byTitle: d.titles().byTitle}
+	for _, a := range d.Addressables() {
+		r.ids[a.ID] = true
+	}
+	return r
+}
+
+func (r *resolver) matches(ref Ref) []string {
+	if ref.ByID {
+		if r.ids[ref.Inner] {
+			return []string{ref.Inner}
+		}
+		return nil
+	}
+	return append([]string(nil), r.byTitle[normTitle(ref.Inner)]...)
+}
+
+// titleIndex maps a normalized title to the ids of the titled items that carry
+// it. It is kept on the document and checked against the items on every use, so
+// an edit to a title or id is never missed; the check walks the items without
+// allocating, which is what makes resolving thousands of references cheap.
+// A Doc is not safe for concurrent use, with or without this.
+type titleIndex struct {
+	items   []*Item
+	titles  []string
+	ids     []string
+	byTitle map[string][]string
+}
+
+func (d *Doc) titles() *titleIndex {
+	if x := d.tix; x != nil && x.fresh(d) {
+		return x
+	}
+	x := &titleIndex{byTitle: map[string][]string{}}
 	for _, s := range d.Sections {
 		for _, n := range s.Nodes {
-			if it, ok := n.(*Item); ok && it.Title != "" && it.ID != "" && normTitle(it.Title) == want {
-				ids = append(ids, it.ID)
+			if it, ok := n.(*Item); ok {
+				x.items = append(x.items, it)
+				x.titles = append(x.titles, it.Title)
+				x.ids = append(x.ids, it.ID)
+				if it.Title != "" && it.ID != "" {
+					k := normTitle(it.Title)
+					x.byTitle[k] = append(x.byTitle[k], it.ID)
+				}
 			}
 		}
 	}
-	return ids
+	d.tix = x
+	return x
+}
+
+func (x *titleIndex) fresh(d *Doc) bool {
+	i := 0
+	for _, s := range d.Sections {
+		for _, n := range s.Nodes {
+			it, ok := n.(*Item)
+			if !ok {
+				continue
+			}
+			if i >= len(x.items) || x.items[i] != it || x.titles[i] != it.Title || x.ids[i] != it.ID {
+				return false
+			}
+			i++
+		}
+	}
+	return i == len(x.items)
 }
 
 // HasErrors reports whether any diagnostic blocks a commit.
