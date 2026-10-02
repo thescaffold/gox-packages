@@ -19,3 +19,21 @@ own: a change to the design is a change to the spec (TRD §6.5).
   drift. `Parse` reads JSON strictly (unknown fields are an error) and validates.
   `JSON()` is stable: edges come out sorted.
 - Standard library only.
+
+## Impact
+
+`Impact(before, after)` says what a change to the design makes stale (TRD §6.5):
+
+- **Affected**: what changed, plus whatever depends on it. Something that uses or
+  calls a thing depends on it; an owner depends on what it owns; an environment
+  depends on what is deployed to it. People and environments are ends of the line.
+  Each says in plain words why. Descriptions, code ownership and `inferred` marks are
+  not design changes, so a wording-only edit has no impact.
+- **Tests**: the criteria of affected capabilities (`rerun`), with new, changed and
+  removed ones marked.
+- **Code**: the paths that own affected parts, before or after; `Unbuilt` names
+  affected parts with no code yet.
+- **Artifacts**: the generated files to make again (`design.json`, `design.mmd`,
+  `erd.mmd`, `openapi.yaml`, `prototype`, `PRD.md`, `TRD.md`).
+- **Work**: the plan, in plain words: build, remove, update, move, disconnect,
+  connect, deploy, re-check. A build plans from this.

@@ -1,0 +1,138 @@
+{
+  "affected": [
+    {
+      "id": "recurring-orders",
+      "kind": "capability",
+      "name": "Recurring orders",
+      "direct": true,
+      "why": "it is now linked to “Orders” (uses)"
+    },
+    {
+      "id": "order",
+      "kind": "entity",
+      "name": "Order",
+      "direct": true,
+      "why": "it is now linked to “Orders” (owns)"
+    },
+    {
+      "id": "order-line",
+      "kind": "entity",
+      "name": "Order line",
+      "direct": true,
+      "why": "it is now linked to “Orders” (owns)"
+    },
+    {
+      "id": "my-orders",
+      "kind": "interface",
+      "name": "My orders",
+      "why": "it works with “Order”, which is affected"
+    },
+    {
+      "id": "staging",
+      "kind": "environment",
+      "name": "staging",
+      "direct": true,
+      "why": "it is now linked to “Orders” (deploys_to)"
+    },
+    {
+      "id": "production",
+      "kind": "environment",
+      "name": "production",
+      "direct": true,
+      "why": "it is now linked to “Orders” (deploys_to)"
+    },
+    {
+      "id": "orders-service",
+      "kind": "service",
+      "name": "Orders",
+      "direct": true,
+      "why": "it is new"
+    }
+  ],
+  "tests": [
+    {
+      "capability": "recurring-orders",
+      "criterion": "c-3f2a",
+      "text": "A household sets Milk to repeat weekly and an order appears the next week.",
+      "status": "rerun"
+    },
+    {
+      "capability": "recurring-orders",
+      "criterion": "c-b310",
+      "text": "Skipping the next order removes it and keeps the schedule.",
+      "status": "rerun"
+    },
+    {
+      "capability": "recurring-orders",
+      "criterion": "c-52c9",
+      "text": "A failed payment retries and then pauses the order.",
+      "status": "rerun"
+    }
+  ],
+  "code": [],
+  "unbuilt": [
+    "recurring-orders",
+    "order",
+    "order-line",
+    "my-orders",
+    "orders-service"
+  ],
+  "artifacts": [
+    "design.json",
+    "design.mmd",
+    "openapi.yaml",
+    "prototype",
+    "PRD.md",
+    "TRD.md"
+  ],
+  "work": [
+    {
+      "kind": "add",
+      "node": "orders-service",
+      "title": "Create the “Orders” service",
+      "why": "the spec now has it"
+    },
+    {
+      "kind": "move",
+      "node": "recurring-orders",
+      "title": "Move “Recurring orders” into “Orders”",
+      "why": "who owns it changed"
+    },
+    {
+      "kind": "move",
+      "node": "order",
+      "title": "Move “Order” into “Orders”",
+      "why": "who owns it changed"
+    },
+    {
+      "kind": "move",
+      "node": "order-line",
+      "title": "Move “Order line” into “Orders”",
+      "why": "who owns it changed"
+    },
+    {
+      "kind": "disconnect",
+      "node": "recurring-orders",
+      "title": "Disconnect “Recurring orders” from “Order”",
+      "why": "the spec no longer links them (uses)"
+    },
+    {
+      "kind": "connect",
+      "node": "recurring-orders",
+      "title": "Connect “Recurring orders” to “Orders”",
+      "why": "the spec now links them (uses)"
+    },
+    {
+      "kind": "deploy",
+      "node": "orders-service",
+      "title": "Deploy “Orders” to staging and production",
+      "why": "the spec now says where it runs"
+    },
+    {
+      "kind": "recheck",
+      "node": "my-orders",
+      "title": "Re-check “My orders”",
+      "why": "it works with “Order”, which is affected"
+    }
+  ]
+}

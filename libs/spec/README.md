@@ -64,6 +64,7 @@ says so in the returned conflicts; order within a section or list is mine's.
 | `diff.go` | `Diff`: changes by id, each semantic or prose-only |
 | `merge.go` | `Merge3`: item-level three-way merge with explicit conflicts |
 | `compile.go` | `Compile`: spec → design graph |
+| `impact.go` | `Impact(before, after, ownership)`: compile both, compare the designs |
 | `outline.go` | `Outline`: the compact view given to models |
 | `testdata/` | `valid/` (canonical files, a fixed point), `messy/` (hand-typed input and its reviewed `.golden`), `invalid/` (and the expected `.diag`) |
 
