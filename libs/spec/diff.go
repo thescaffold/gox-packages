@@ -34,7 +34,7 @@ type Change struct {
 	To    string `json:"to"`
 	// Semantic is true when the change alters what the system should be or do,
 	// and false when only wording changed (a description, a note, the summary).
-	Semantic bool
+	Semantic bool `json:"semantic"`
 }
 
 type entryInfo struct {

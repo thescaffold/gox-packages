@@ -1,6 +1,7 @@
 package spec
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
@@ -118,5 +119,23 @@ func TestSemanticKeepsOnlyChangesThatNeedWork(t *testing.T) {
 	p, _ := Parse(Print(d))
 	if len(Diff(d, p)) != 0 {
 		t.Fatal("reformatting changed something")
+	}
+}
+
+// The editor and history read every field of a change by its lower-case name.
+func TestChangeJSONNamesAreAllLowerCase(t *testing.T) {
+	b, err := json.Marshal(Change{Op: Changed, ID: "x", Semantic: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m map[string]any
+	_ = json.Unmarshal(b, &m)
+	for k := range m {
+		if k != strings.ToLower(k) {
+			t.Errorf("%q is not lower case: %s", k, b)
+		}
+	}
+	if m["semantic"] != true {
+		t.Errorf("semantic missing: %s", b)
 	}
 }
