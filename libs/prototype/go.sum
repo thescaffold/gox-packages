@@ -1,0 +1,4 @@
+github.com/thescaffold/gox-packages/libs/design v0.0.1 h1:hjeHyiwp48aM8Tmw86PalSIDdqNMF9152QyE3QfRcGw=
+github.com/thescaffold/gox-packages/libs/design v0.0.1/go.mod h1:8d1yeRxMwPJSc760RdkfV9N7xlRgCup3qylkvlFe8oE=
+github.com/thescaffold/gox-packages/libs/spec v0.0.1 h1:7FIEuTJzZ0WjEisg203eQo1c9iQzBaXbahMJ3Bdnkhg=
+github.com/thescaffold/gox-packages/libs/spec v0.0.1/go.mod h1:9jdWNjUOGzbkIaGY+OXZEb2YzM8sXNVmiy7zK5DTR/4=
