@@ -21,16 +21,17 @@ const (
 
 // Change is one difference between two documents, found by id.
 type Change struct {
-	Op ChangeOp
+	Op ChangeOp `json:"op"`
 	// ID is the item, rule or criterion the change is about ("" for the document).
-	ID    string
-	Kind  string
-	Label string
+	ID    string `json:"id"`
+	Kind  string `json:"kind"`
+	Label string `json:"label"`
 	// Parent is the item an entry belongs to.
-	Parent string
+	Parent string `json:"parent"`
 	// Field says what changed: a property name, "title", "text", "description", "fields", "options", "answer".
-	Field    string
-	From, To string
+	Field string `json:"field"`
+	From  string `json:"from"`
+	To    string `json:"to"`
 	// Semantic is true when the change alters what the system should be or do,
 	// and false when only wording changed (a description, a note, the summary).
 	Semantic bool

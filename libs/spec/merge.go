@@ -10,15 +10,15 @@ import (
 // Conflict is something both sides changed in different ways, which a person has
 // to settle. The merged document keeps "mine" for it.
 type Conflict struct {
-	ID    string
-	Kind  string
-	Label string
+	ID    string `json:"id"`
+	Kind  string `json:"kind"`
+	Label string `json:"label"`
 	// Field says what clashed: "title", "text", "description", "prop:uses", "entry:must:c-91ab", "item", "setting:currency", ...
-	Field  string
-	Reason string
-	Base   string
-	Mine   string
-	Theirs string
+	Field  string `json:"field"`
+	Reason string `json:"reason"`
+	Base   string `json:"base"`
+	Mine   string `json:"mine"`
+	Theirs string `json:"theirs"`
 }
 
 // Merge3 combines two edits of the same base, item by item. A part of an item
