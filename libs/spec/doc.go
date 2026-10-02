@@ -115,8 +115,9 @@ type Child struct {
 
 // Option is a "- (a) text" choice of a question.
 type Option struct {
-	Key, Text string
-	Line      int
+	Key  string `json:"key"`
+	Text string `json:"text"`
+	Line int    `json:"line,omitempty"`
 }
 
 // Style is how an item is written.
