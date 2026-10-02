@@ -27,8 +27,10 @@ func (s Severity) String() string {
 // Edit replaces the text from column Col up to (not including) EndCol of Line
 // with Text (both columns 1-based, in bytes). Col == EndCol inserts.
 type Edit struct {
-	Line, Col, EndCol int
-	Text              string
+	Line   int    `json:"line"`
+	Col    int    `json:"col"`
+	EndCol int    `json:"endCol"`
+	Text   string `json:"text"`
 }
 
 // Diagnostic is a plain-language note about a place in the text.

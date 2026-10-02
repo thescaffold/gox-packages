@@ -10,20 +10,20 @@ import (
 // OutlineItem is one line of the compact view a model is given: enough to know
 // what exists and to ask for the rest by id.
 type OutlineItem struct {
-	ID    string
-	Kind  string
-	Title string
+	ID    string `json:"id"`
+	Kind  string `json:"kind"`
+	Title string `json:"title"`
 	// Status is derived, never typed: a question is "open" until it has an answer,
 	// an assumption is "assumed" until it is moved to Decisions, everything else is "decided".
-	Status string
+	Status string `json:"status"`
 	// Parent is the id of the item a rule, criterion or field belongs to.
-	Parent string
+	Parent string `json:"parent"`
 	// Path says where it sits: its section ("features"), or the item it belongs
 	// to under that ("features/recurring-orders").
-	Path string
+	Path string `json:"path"`
 	// Hash is a sha-256 of what it says, so a change to it is a different hash and
 	// nothing else is.
-	Hash string
+	Hash string `json:"hash"`
 }
 
 func hashOf(parts ...string) string {
