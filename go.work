@@ -9,6 +9,7 @@ use (
 	./libs/core
 	./libs/design
 	./libs/flags
+	./libs/outbox
 	./libs/polylog
 	./libs/prototype
 	./libs/render
