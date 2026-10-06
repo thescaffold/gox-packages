@@ -37,8 +37,35 @@ type Event struct {
 
 func (Event) TableName() string { return "EventOutbox" }
 
-// Migrate creates or updates the outbox table.
-func Migrate(db *gorm.DB) error { return db.AutoMigrate(&Event{}) }
+// Migrate creates the outbox table and its indexes. It is idempotent: it can run
+// at every boot. On Postgres it uses explicit DDL, because GORM's AutoMigrate
+// mishandles the mixed-case table name once the table exists.
+func Migrate(db *gorm.DB) error {
+	if db.Dialector.Name() != "postgres" {
+		return db.AutoMigrate(&Event{})
+	}
+	for _, s := range []string{
+		`CREATE TABLE IF NOT EXISTS "EventOutbox" (
+			"id"              varchar(36) PRIMARY KEY,
+			"seq"             BIGINT GENERATED ALWAYS AS IDENTITY,
+			"name"            varchar(255) NOT NULL,
+			"payload"         jsonb,
+			"created_at"      timestamptz,
+			"published_at"    timestamptz,
+			"attempts"        int NOT NULL DEFAULT 0,
+			"next_attempt_at" timestamptz,
+			"last_error"      text,
+			"parked"          boolean NOT NULL DEFAULT false
+		)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS "idx_event_outbox_seq" ON "EventOutbox" ("seq")`,
+		`CREATE INDEX IF NOT EXISTS "idx_event_outbox_pending" ON "EventOutbox" ("published_at", "parked", "seq")`,
+	} {
+		if err := db.Exec(s).Error; err != nil {
+			return err
+		}
+	}
+	return nil
+}
 
 // Add records an event inside the caller's transaction (tx must be the
 // transaction that makes the change). Rolling the transaction back removes it.

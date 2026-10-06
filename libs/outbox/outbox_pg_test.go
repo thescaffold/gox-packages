@@ -85,3 +85,23 @@ func TestConcurrentRelaysPublishEachEventOnce(t *testing.T) {
 		t.Fatalf("%d left unpublished", pending)
 	}
 }
+
+// Migrate runs at every boot, so it must be safe to run again on an existing table.
+func TestMigrateIsIdempotentOnPostgres(t *testing.T) {
+	dsn := os.Getenv("OUTBOX_TEST_DB_URL")
+	if dsn == "" {
+		t.Skip("OUTBOX_TEST_DB_URL not set; skipping Postgres test")
+	}
+	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 3; i++ {
+		if err := Migrate(db); err != nil {
+			t.Fatalf("run %d: %v", i+1, err)
+		}
+	}
+	if _, err := Add(db, "x.y", map[string]any{"a": 1}); err != nil {
+		t.Fatalf("the table is not usable: %v", err)
+	}
+}
