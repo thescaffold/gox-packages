@@ -151,6 +151,23 @@ func (s *AuthSuite) TestAuthMiddleware_CanonicalHeaderCasing_StoresClaims() {
 	s.T.Expect(claims["userId"]).ToEqual("u1")
 }
 
+// SecretFn is read per request, so a secret that is set after the middleware
+// is constructed (a .env loaded later) is the one that counts.
+func (s *AuthSuite) TestAuthMiddleware_SecretFn_IsReadPerRequest() {
+	secret := "not-yet-configured"
+	mw := &auth.AuthMiddleware{SecretFn: func() string { return secret }}
+	token, _ := auth.Sign(map[string]any{"userId": "u1"}, testSecret, time.Hour)
+
+	before := test.NewMockContext()
+	before.MockRequest().WithHeader("Authorization", "Bearer "+token)
+	s.T.Expect(mw.Handle(before) == nil).ToEqual(false)
+
+	secret = testSecret
+	after := test.NewMockContext()
+	after.MockRequest().WithHeader("Authorization", "Bearer "+token)
+	s.T.Expect(mw.Handle(after)).ToBeNil()
+}
+
 func (s *AuthSuite) TestAuthMiddleware_MissingHeader_Returns401() {
 	mw := &auth.AuthMiddleware{Secret: testSecret}
 	ctx := test.NewMockContext()

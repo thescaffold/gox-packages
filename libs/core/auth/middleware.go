@@ -17,6 +17,18 @@ import (
 // is returned to stop the middleware chain.
 type AuthMiddleware struct {
 	Secret string
+	// SecretFn, when set, supplies the secret on every request instead of
+	// Secret. Use it when the secret comes from the environment: a middleware
+	// built in a package-level var is constructed before the host has loaded
+	// its .env, so a fixed Secret would be the unconfigured default.
+	SecretFn func() string
+}
+
+func (m *AuthMiddleware) secret() string {
+	if m.SecretFn != nil {
+		return m.SecretFn()
+	}
+	return m.Secret
 }
 
 // claimsKey is the context key under which decoded JWT claims are stored.
@@ -39,7 +51,7 @@ func (m *AuthMiddleware) Handle(ctx types.Context) error {
 	}
 
 	tokenStr := strings.TrimSpace(header[len(bearerPrefix):])
-	claims, err := Verify(tokenStr, m.Secret)
+	claims, err := Verify(tokenStr, m.secret())
 	if err != nil {
 		return writeUnauthorized(ctx)
 	}
