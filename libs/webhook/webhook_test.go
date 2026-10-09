@@ -148,3 +148,43 @@ func TestDeliverStopsWhenTheContextIsCancelled(t *testing.T) {
 		t.Fatalf("%+v", res)
 	}
 }
+
+func TestSignAllCarriesEverySecretAndEachVerifies(t *testing.T) {
+	body := []byte(`{"id":"evt_1"}`)
+	h := SignAll([]string{"whsec_new", "whsec_old"}, t0, body)
+	if strings.Count(h, "v1=") != 2 {
+		t.Fatalf("want two v1 signatures, got %q", h)
+	}
+	for _, secret := range []string{"whsec_new", "whsec_old"} {
+		if err := Verify(secret, h, body, t0.Add(time.Second), 0); err != nil {
+			t.Fatalf("%s must verify during rotation: %v", secret, err)
+		}
+	}
+	if err := Verify("whsec_other", h, body, t0, 0); err != ErrSignature {
+		t.Fatalf("an unrelated secret must not verify, got %v", err)
+	}
+	if SignAll([]string{"whsec_a"}, t0, body) != Sign("whsec_a", t0, body) {
+		t.Fatal("a single secret must equal Sign")
+	}
+}
+
+func TestDeliverCapturesResponseBodyAndSignsWithAllSecrets(t *testing.T) {
+	var header string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		header = r.Header.Get("X-Test-Sig")
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = io.WriteString(w, strings.Repeat("x", 5000))
+	}))
+	defer srv.Close()
+	s := &Sender{Header: "X-Test-Sig", MaxAttempts: 1}
+	res := s.Deliver(context.Background(), Request{URL: srv.URL, Secrets: []string{"a", "b"}, Body: []byte("{}")})
+	if res.Delivered || len(res.Attempts) != 1 {
+		t.Fatalf("unexpected result: %+v", res)
+	}
+	if got := len(res.Last().ResponseBody); got != MaxResponseBody {
+		t.Fatalf("response body must be truncated to %d bytes, got %d", MaxResponseBody, got)
+	}
+	if strings.Count(header, "v1=") != 2 {
+		t.Fatalf("both secrets must sign the request, header=%q", header)
+	}
+}

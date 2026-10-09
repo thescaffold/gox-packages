@@ -26,6 +26,22 @@ func Sign(secret string, ts time.Time, body []byte) string {
 	return "t=" + t + ",v1=" + mac(secret, t, body)
 }
 
+// SignAll signs with several secrets at once: "t=<unix>,v1=<hex>,v1=<hex>".
+// During a secret rotation, send both the new and the previous secret so a
+// receiver that has only deployed one of them still verifies (Verify accepts
+// any matching v1). A single secret yields exactly what Sign returns.
+func SignAll(secrets []string, ts time.Time, body []byte) string {
+	t := strconv.FormatInt(ts.Unix(), 10)
+	out := "t=" + t
+	for _, s := range secrets {
+		if s == "" {
+			continue
+		}
+		out += ",v1=" + mac(s, t, body)
+	}
+	return out
+}
+
 func mac(secret, t string, body []byte) string {
 	m := hmac.New(sha256.New, []byte(secret))
 	m.Write([]byte(t))
@@ -81,9 +97,12 @@ func Verify(secret, header string, body []byte, now time.Time, tolerance time.Du
 
 // Request is one delivery.
 type Request struct {
-	URL       string
-	Method    string // default POST
-	Secret    string // empty sends unsigned
+	URL    string
+	Method string // default POST
+	Secret string // empty sends unsigned
+	// Secrets, when set, is used instead of Secret and signs with every entry
+	// (secret rotation overlap; see SignAll).
+	Secrets   []string
 	EventID   string
 	EventName string
 	Body      []byte
@@ -92,11 +111,15 @@ type Request struct {
 
 // Attempt records one try.
 type Attempt struct {
-	N        int
-	Status   int    // 0 when no response
-	Error    string // network error, if any
-	Duration time.Duration
-	At       time.Time
+	N      int
+	Status int    // 0 when no response
+	Error  string // network error, if any
+	// ResponseBody is the start of the response body (at most
+	// MaxResponseBody bytes), kept so a delivery log can show what the
+	// receiver said. Empty when there was no response.
+	ResponseBody string
+	Duration     time.Duration
+	At           time.Time
 	// Retry says whether the sender will try again after this attempt.
 	Retry bool
 }
@@ -114,6 +137,9 @@ func (r Result) Last() Attempt {
 	}
 	return r.Attempts[len(r.Attempts)-1]
 }
+
+// MaxResponseBody bounds Attempt.ResponseBody.
+const MaxResponseBody = 1024
 
 // Sender performs deliveries.
 type Sender struct {
@@ -196,8 +222,8 @@ func (s *Sender) Deliver(ctx context.Context, r Request) Result {
 	}
 	for n := 1; n <= s.maxAttempts(); n++ {
 		start := s.now()
-		status, retryAfter, err := s.once(ctx, method, r, n)
-		a := Attempt{N: n, Status: status, Duration: s.now().Sub(start), At: start}
+		status, retryAfter, respBody, err := s.once(ctx, method, r, n)
+		a := Attempt{N: n, Status: status, Duration: s.now().Sub(start), At: start, ResponseBody: respBody}
 		if err != nil {
 			a.Error = err.Error()
 		}
@@ -229,10 +255,10 @@ func (s *Sender) Deliver(ctx context.Context, r Request) Result {
 	return res
 }
 
-func (s *Sender) once(ctx context.Context, method string, r Request, n int) (status int, retryAfter time.Duration, err error) {
+func (s *Sender) once(ctx context.Context, method string, r Request, n int) (status int, retryAfter time.Duration, respBody string, err error) {
 	req, err := http.NewRequestWithContext(ctx, method, r.URL, bytes.NewReader(r.Body))
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, "", err
 	}
 	ts := s.now()
 	req.Header.Set("Content-Type", "application/json")
@@ -244,22 +270,28 @@ func (s *Sender) once(ctx context.Context, method string, r Request, n int) (sta
 	for k, v := range r.Headers {
 		req.Header.Set(k, v)
 	}
-	if r.Secret != "" {
-		// the signature is made fresh per attempt so the timestamp is never stale
+	// the signature is made fresh per attempt so the timestamp is never stale
+	if len(r.Secrets) > 0 {
+		req.Header.Set(s.header(), SignAll(r.Secrets, ts, r.Body))
+	} else if r.Secret != "" {
 		req.Header.Set(s.header(), Sign(r.Secret, ts, r.Body))
 	}
 	resp, err := s.client().Do(req)
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, "", err
 	}
 	defer resp.Body.Close()
-	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 64<<10))
+	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
+	if len(raw) > MaxResponseBody {
+		raw = raw[:MaxResponseBody]
+	}
+	respBody = string(raw)
 	if v := resp.Header.Get("Retry-After"); v != "" {
 		if secs, perr := strconv.Atoi(v); perr == nil && secs > 0 {
 			retryAfter = time.Duration(secs) * time.Second
 		}
 	}
-	return resp.StatusCode, retryAfter, nil
+	return resp.StatusCode, retryAfter, respBody, nil
 }
 
 func firstNonEmpty(a, b string) string {
