@@ -22,6 +22,11 @@ type AuthMiddleware struct {
 	// built in a package-level var is constructed before the host has loaded
 	// its .env, so a fixed Secret would be the unconfigured default.
 	SecretFn func() string
+	// Revoked, when set, is asked about every token whose signature and
+	// expiry are valid; true refuses it. It is how a deployment ends sessions
+	// that a stateless token would otherwise outlive (sign-out everywhere,
+	// account closure). Nil keeps the old behaviour exactly.
+	Revoked func(claims map[string]any) bool
 }
 
 func (m *AuthMiddleware) secret() string {
@@ -53,6 +58,10 @@ func (m *AuthMiddleware) Handle(ctx types.Context) error {
 	tokenStr := strings.TrimSpace(header[len(bearerPrefix):])
 	claims, err := Verify(tokenStr, m.secret())
 	if err != nil {
+		return writeUnauthorized(ctx)
+	}
+
+	if m.Revoked != nil && m.Revoked(claims) {
 		return writeUnauthorized(ctx)
 	}
 
