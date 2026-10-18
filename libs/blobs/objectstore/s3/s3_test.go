@@ -58,7 +58,7 @@ func TestContract_WithKeyPrefix(t *testing.T) {
 		New: func(t *testing.T) objectstore.ObjectStore {
 			srv := s3test.New(bucket, ak, sk, region)
 			t.Cleanup(srv.Close)
-			return newStore(t, srv, func(c *s3.Config) { c.Prefix = "tenant-data/blobs" })
+			return newStore(t, srv, func(c *s3.Config) { c.Prefix = "tenant-data/blobs"; c.PartSize = 256 << 10 })
 		},
 		PresignSecret: secret,
 		MaxObjectSize: 8 << 20,
