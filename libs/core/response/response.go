@@ -1,6 +1,7 @@
 package response
 
 import (
+	"log"
 	"net/http"
 	"strings"
 
@@ -175,6 +176,17 @@ func Unauthorized(title, message string) types.Output {
 // Forbidden is a 403 error convenience.
 func Forbidden(title, message string) types.Output {
 	return Error(title, message, http.StatusForbidden)
+}
+
+// InternalMessage is what a caller is told when the server fails.
+const InternalMessage = "something went wrong"
+
+// Internal is a 500 that logs err on the server and tells the caller only
+// InternalMessage. Use it instead of InternalServerError(title, err.Error()),
+// which sends the error's text (SQL, file paths, upstream responses) to clients.
+func Internal(title string, err error) types.Output {
+	log.Printf("%s: internal error: %v", title, err)
+	return InternalServerError(title, InternalMessage)
 }
 
 // InternalServerError is a 500 error convenience.

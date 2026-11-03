@@ -2,7 +2,10 @@ package response
 
 import (
 	"encoding/json"
+	"errors"
+	"log"
 	"net/http"
+	"os"
 	"reflect"
 	"sort"
 	"strings"
@@ -86,5 +89,18 @@ func TestErrorBodyMatchesTheWire(t *testing.T) {
 	sort.Strings(want)
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("wire %v, ErrorBody %v", got, want)
+	}
+}
+
+func TestInternalLogsButDoesNotTell(t *testing.T) {
+	var logged strings.Builder
+	log.SetOutput(&logged)
+	defer log.SetOutput(os.Stderr)
+	m := body(t, Internal("social", errors.New(`pq: relation "SocialPosts" does not exist`)))
+	if m["message"] != InternalMessage || m["code"] != "internal" || m["retryable"] != true {
+		t.Fatalf("got %v", m)
+	}
+	if !strings.Contains(logged.String(), "SocialPosts") {
+		t.Fatalf("the error must reach the server log, got %q", logged.String())
 	}
 }
