@@ -156,6 +156,15 @@ type Config[E, C, U any] struct {
 	// BeforeCreate hook (see tasks' comment/link controllers).
 	WorkspaceScopeClause string
 
+	// OwnerScoped, when true, additionally confines the same paths as
+	// WorkspaceScoped to rows whose OwnerColumn equals the caller's
+	// ctx.UserID: for per-person rows (notifications, preferences) that no
+	// one else in the workspace may read or change. Opt-in (default false) and
+	// fails closed like WorkspaceScoped: an empty ctx.UserID lists nothing and
+	// finds nothing.
+	OwnerScoped bool
+	// OwnerColumn is the SQL column OwnerScoped filters on (default "user_id").
+	OwnerColumn string
 	// ValidateBody, when true, enforces the `binding:"..."` tags on the
 	// Create/Update/UpdatePut DTO (go-playground/validator syntax:
 	// required, oneof=..., gte/lte, ...) and answers 400 without touching

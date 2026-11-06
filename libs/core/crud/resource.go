@@ -679,6 +679,27 @@ func (r *CrudResource[E, C, U]) workspaceColumn() string {
 // caller MUST fail closed — return empty/not-found — rather than run the
 // original, now-unsafe, unscoped query.
 func (r *CrudResource[E, C, U]) scopeWhere(where string, args []any, ctx ntxctx.NTXContext) (string, []any, bool) {
+	where, args, ok := r.workspaceScopeWhere(where, args, ctx)
+	if !ok || !r.cfg.OwnerScoped {
+		return where, args, ok
+	}
+	if ctx.UserID == "" {
+		return where, args, false
+	}
+	col := r.cfg.OwnerColumn
+	if col == "" {
+		col = "user_id"
+	}
+	if where != "" {
+		where = "(" + where + ") AND " + col + " = ?"
+	} else {
+		where = col + " = ?"
+	}
+	return where, append(args, ctx.UserID), true
+}
+
+// workspaceScopeWhere is the WorkspaceScoped half of scopeWhere.
+func (r *CrudResource[E, C, U]) workspaceScopeWhere(where string, args []any, ctx ntxctx.NTXContext) (string, []any, bool) {
 	if !r.cfg.WorkspaceScoped && r.cfg.WorkspaceScopeClause == "" {
 		return where, args, true
 	}

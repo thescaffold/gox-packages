@@ -767,3 +767,31 @@ func (s *CrudSuite) TestList_FilterFromARequestBecomesAWhereClause() {
 	s.T.Expect(strings.Contains(entity.lastQuery, "project_id")).ToBeTrue()
 	s.T.Expect(strings.Contains(entity.lastQuery, "workspace_id")).ToBeTrue()
 }
+
+// ── OwnerScoped ─────────────────────────────────────────────────────────────
+
+func (s *CrudSuite) TestList_OwnerScoped_AddsWorkspaceAndOwnerClauses() {
+	r, entity := newItemResource(crud.Config[Item, Item, Item]{Name: "Item", WorkspaceScoped: true, OwnerScoped: true})
+	entity.items = []Item{{ID: "1", Name: "A"}}
+	out := r.List(&crud.ListDto{Queries: map[string]string{}, Ctx: ntxctx.NTXContext{WorkspaceID: "ws-a", UserID: "u-1"}})
+	s.T.Expect(out.Code()).ToEqual(http.StatusOK)
+	s.T.Expect(entity.lastQuery).ToEqual("(workspace_id = ?) AND user_id = ?")
+	s.T.Expect(entity.lastArgs).ToEqual([]any{"ws-a", "u-1"})
+}
+
+func (s *CrudSuite) TestList_OwnerScoped_NoUserInContext_ReturnsEmpty() {
+	r, entity := newItemResource(crud.Config[Item, Item, Item]{Name: "Item", OwnerScoped: true, OwnerColumn: "owner_id"})
+	entity.items = []Item{{ID: "1", Name: "A"}, {ID: "2", Name: "B"}}
+	out := r.List(&crud.ListDto{Queries: map[string]string{}, Ctx: ntxctx.NTXContext{WorkspaceID: "ws-a"}})
+	s.T.Expect(out.Code()).ToEqual(http.StatusOK)
+	s.T.Expect(len(envelope(out).Data.([]Item))).ToEqual(0)
+}
+
+func (s *CrudSuite) TestList_OwnerScoped_CustomColumnWithoutWorkspace() {
+	r, entity := newItemResource(crud.Config[Item, Item, Item]{Name: "Item", OwnerScoped: true, OwnerColumn: "owner_id"})
+	entity.items = []Item{{ID: "1", Name: "A"}}
+	out := r.List(&crud.ListDto{Queries: map[string]string{}, Ctx: ntxctx.NTXContext{UserID: "u-9"}})
+	s.T.Expect(out.Code()).ToEqual(http.StatusOK)
+	s.T.Expect(entity.lastQuery).ToEqual("owner_id = ?")
+	s.T.Expect(entity.lastArgs).ToEqual([]any{"u-9"})
+}
