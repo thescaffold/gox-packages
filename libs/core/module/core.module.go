@@ -96,7 +96,8 @@ func (m *CoreModule) Configure(container types.Container) error {
 }
 
 func (m *CoreModule) Declarations() []any {
-	bus := events.NewBus()
+	// One bus per process, shared by every module (events.Default).
+	bus := events.Default()
 	tracker := events.NewTrackerService(bus)
 	httpClient := ntxhttp.New(m.cfg.HMACKey)
 	syncService := syncsvc.New(m.cfg.Cache)
