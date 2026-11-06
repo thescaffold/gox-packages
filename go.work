@@ -10,6 +10,7 @@ use (
 	./libs/design
 	./libs/flags
 	./libs/outbox
+	./libs/kms
 	./libs/polylog
 	./libs/prototype
 	./libs/render
