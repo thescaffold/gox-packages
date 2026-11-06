@@ -71,6 +71,13 @@ func (m *AuthMiddleware) Handle(ctx types.Context) error {
 
 // GetClaims retrieves the decoded JWT claims from the goose context.
 // Returns nil if the middleware has not populated them.
+// SetClaims stores verified claims for FromClaims and GetClaims, for an
+// authenticator other than a JWT (an API key, say) that has already checked
+// the credential. Never call it with claims a client supplied unverified.
+func SetClaims(ctx types.Context, claims map[string]any) {
+	ctx.SetValue(claimsKey, claims)
+}
+
 func GetClaims(ctx types.Context) map[string]any {
 	v := ctx.GetValue(claimsKey)
 	if v == nil {

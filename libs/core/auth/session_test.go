@@ -42,3 +42,22 @@ func TestRevocationHookIsAskedAboutEveryToken(t *testing.T) {
 		t.Fatal("the registered hook was not used")
 	}
 }
+
+func TestSetClaimsIsReadByGetClaims(t *testing.T) {
+	ctx := newClaimsTestContext()
+	SetClaims(ctx, map[string]any{"sub": "u-1", "workspaceId": "ws-1"})
+	got := GetClaims(ctx)
+	if got["sub"] != "u-1" || got["workspaceId"] != "ws-1" {
+		t.Fatalf("GetClaims after SetClaims = %v", got)
+	}
+}
+
+// claimsTestContext is the smallest types.Context: values only.
+type claimsTestContext struct{ values map[any]any }
+
+func newClaimsTestContext() *claimsTestContext { return &claimsTestContext{values: map[any]any{}} }
+
+func (c *claimsTestContext) Request() types.Request   { return nil }
+func (c *claimsTestContext) Response() types.Response { return nil }
+func (c *claimsTestContext) SetValue(k, v any)        { c.values[k] = v }
+func (c *claimsTestContext) GetValue(k any) any       { return c.values[k] }
