@@ -30,36 +30,20 @@ func New(cache services.CacheBackend, ttl time.Duration, limit int) *Service {
 
 // Throttle records a hit for id and returns (allowed, remaining-ttl).
 // Mirrors TS ThrottlerService.throttle().
+// Throttle counts one request for id and reports whether it is within the
+// limit, with the time left in the window. The count is taken atomically
+// (Setnx opens the window, Incr counts within it) and compared afterwards, so
+// concurrent requests cannot slip past the limit.
 func (s *Service) Throttle(id string, multiplier int) (bool, time.Duration) {
 	if multiplier <= 0 {
 		multiplier = 1
 	}
 	key := "app:user:throttle:" + id
 
-	// TS reads rCount + rTtl up front, then either seeds the counter (when
-	// absent) or increments it — always returning rTtl, including the
-	// not-found case where the backend's ttl for a missing key is used.
+	var count int64 = 1
+	if !s.cache.Setnx(key, "1", s.TTL) {
+		count = s.cache.Incr(key)
+	}
 	rTTL := s.cache.TTL(key)
-	current, has := s.cache.Get(key)
-	if has {
-		count := atoi(current)
-		if count >= s.Limit*multiplier {
-			return false, rTTL
-		}
-		s.cache.Incr(key)
-		return true, rTTL
-	}
-	s.cache.Set(key, "1", s.TTL)
-	return true, rTTL
-}
-
-func atoi(s string) int {
-	n := 0
-	for _, c := range s {
-		if c < '0' || c > '9' {
-			return 0
-		}
-		n = n*10 + int(c-'0')
-	}
-	return n
+	return count <= int64(s.Limit*multiplier), rTTL
 }
