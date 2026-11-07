@@ -7,6 +7,9 @@ The provider-neutral AI runtime for Origine (TRD §6.2). Go, one module, package
 | `core` | Content blocks, `Message`, `ToolDef`, `Usage` and integer micro-USD cost, typed errors, JSON-Schema input validation, and the ports the host binds (`CredentialStore`, `UsageSink`, `ResponseCache`, `MessageStore`, `AgentStepStore`, `AgentToolCallStore`, `CancelToken`, `PromptStore`). Standard library only. |
 | `llm` | `ProviderDriver`, request validation every driver shares, the stream event vocabulary and the `Accumulator` that turns events into a `ChatResponse`. |
 | `llm/anthropic` | The Anthropic Messages driver: always streams, adaptive thinking, effort, strict and eager tools (eager input is validated client-side), refusals, cache hints, typed errors. |
+| `llm/openai` | The OpenAI Responses API driver (not Chat Completions: only Responses returns reasoning a later turn can replay). Stateless (`store: false`); each reasoning item's id and `encrypted_content` travel in the thinking block's signature. |
+| `llm/gemini` | The Gemini API driver (`streamGenerateContent` over SSE). Thought summaries become thinking blocks with their `thoughtSignature`; a signature on a function call or text part becomes an empty thinking block just before it, so a replay puts it back on that part. Tool schemas go as `parametersJsonSchema` (full JSON Schema). |
+| `llm/deepseek` | The DeepSeek driver (Chat Completions). `deepseek-reasoner`'s `reasoning_content` becomes an unsigned thinking block and is never sent back (the API refuses it); text only. |
 | `policy` | Tiers → model chains, retention and spend constraints, a per-provider circuit breaker and a failover `Router`. |
 | `prompt` | Versioned templates with tenant overrides, override validation, and `WrapUntrusted`. |
 | `agent` | The turn loop: tool dispatch, budgets, cancellation, loop detection, pause and resume. |
@@ -31,6 +34,9 @@ func TestMyDriver(t *testing.T) { aitesting.RunDriverContract(t, myHarness{}) }
 The harness turns a provider-neutral `Scenario` (reply, provider error, stall) into whatever the driver needs, typically a fixture server. `llm/anthropic/harness_test.go` is the worked example.
 
 ## Not done yet
+
+- The OpenAI, Gemini and DeepSeek drivers pass the contract against fixture servers written from each API's documented wire format; none has been run against the live API yet (no keys). `CountTokens` is offered by Gemini only.
+- A harness whose provider returns reasoning without a signature (DeepSeek) implements `aitesting.UnsignedThinking`; the thinking text must still round-trip exactly.
 
 - The Anthropic live smoke test (`TestLiveSmoke`) runs only when `ANTHROPIC_API_KEY` is set; the wire fixtures are written from the documented event format, not recorded from the live API.
 - Server-side model fallbacks and the advisory `TaskBudget` are not sent to the API: their wire shape is not verified. Fallback is done client-side by `policy.Router`.

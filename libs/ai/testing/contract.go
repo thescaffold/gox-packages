@@ -39,6 +39,20 @@ type Harness interface {
 	ForcedToolChoice() bool
 }
 
+// UnsignedThinking is optional on a Harness: a provider whose reasoning comes
+// back without a signature (DeepSeek's reasoning_content) implements it and
+// returns true. The thinking text must still round-trip exactly; only the
+// signature check is waived. A harness that does not implement it is held to
+// the full check.
+type UnsignedThinking interface {
+	UnsignedThinking() bool
+}
+
+func (c contract) signs() bool {
+	u, ok := c.h.(UnsignedThinking)
+	return !ok || !u.UnsignedThinking()
+}
+
 // RunDriverContract is the suite every ProviderDriver must pass. It asserts
 // behaviour a caller relies on, not how the driver gets there.
 func RunDriverContract(t *testing.T, h Harness) {
@@ -203,7 +217,7 @@ func (c contract) chatThinking(t *testing.T) {
 		t.Fatalf("thinking block dropped: %+v", r.Message.Content)
 	}
 	// history is append-only: the block must come back exactly as produced
-	if th.Thinking != "weighing it up" || th.Signature != "c2lnbmF0dXJl" {
+	if th.Thinking != "weighing it up" || (c.signs() && th.Signature != "c2lnbmF0dXJl") {
 		t.Errorf("thinking altered: %+v", *th)
 	}
 	if r.Message.Content.PlainText() != "done" {
