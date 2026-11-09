@@ -13,7 +13,8 @@ Go library of cross-cutting concerns for Goose-based microservices.
 | `auth` | JWT sign/verify, `AuthMiddleware` (Bearer), scope resolution |
 | `context` | Request context extraction (`NTXContext`), `Middleware` |
 | `crud` | Generic `CrudResource[E, C, U]` controller factory |
-| `events` | In-process wildcard pub/sub `Bus`, `TrackerService` |
+| `events` | In-process wildcard pub/sub `Bus`, `TrackerService`, `Default()` (the process's bus), `RegisterSubscriptions` (make an app's `Subscriptions` live) |
+| `events/dbevents` | `Publish(bus)`: rows written through Goose `sql.Entity` become `apps.db.<table>.after-insert\|update\|delete` events (opt-in, async, in order, after commit) |
 | `filter` | Error/panic filter middleware |
 | `http` | Retry-capable `Client` with HMAC signing (`Internal`) and plain (`External`) calls |
 | `i18n` | YAML-based translation loader and render helper |

@@ -24,3 +24,14 @@ func TestAppSubscriptionsHearEveryTracker(t *testing.T) {
 		t.Fatalf("heard %d, want 2", heard.Load())
 	}
 }
+
+func TestHasSubscriber(t *testing.T) {
+	b := NewBus()
+	b.Subscribe("apps.*.*.after-insert", func(string, any) {})
+	if !b.HasSubscriber("apps.db.identityusers.after-insert") {
+		t.Fatal("a matching pattern was not found")
+	}
+	if b.HasSubscriber("apps.db.identityusers.after-update") {
+		t.Fatal("a pattern matched an event it does not cover")
+	}
+}

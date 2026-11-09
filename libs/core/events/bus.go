@@ -67,6 +67,20 @@ func (b *Bus) Publish(eventType string, payload any) {
 	}
 }
 
+// HasSubscriber reports whether any handler's pattern matches eventType, so a
+// publisher can skip building a payload nobody will read.
+func (b *Bus) HasSubscriber(eventType string) bool {
+	segs := strings.Split(eventType, ".")
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	for _, s := range b.subs {
+		if matchSegments(s.segments, segs) {
+			return true
+		}
+	}
+	return false
+}
+
 // matchSegments returns true if the wildcard pattern matches the event segments.
 func matchSegments(pattern, event []string) bool {
 	return matchAt(pattern, 0, event, 0)
