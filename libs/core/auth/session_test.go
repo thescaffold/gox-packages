@@ -61,3 +61,12 @@ func (c *claimsTestContext) Request() types.Request   { return nil }
 func (c *claimsTestContext) Response() types.Response { return nil }
 func (c *claimsTestContext) SetValue(k, v any)        { c.values[k] = v }
 func (c *claimsTestContext) GetValue(k any) any       { return c.values[k] }
+
+func TestRequiresSession(t *testing.T) {
+	if !RequiresSession(Session()) {
+		t.Fatal("Session() is not a session check")
+	}
+	if RequiresSession(nil) || RequiresSession([]types.Middleware{&FromClaims{}}) {
+		t.Fatal("a chain without AuthMiddleware reported as secured")
+	}
+}

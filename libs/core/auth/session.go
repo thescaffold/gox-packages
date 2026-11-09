@@ -77,3 +77,18 @@ func Secure(route types.Route, public ...string) types.Route {
 	route.Children = secured
 	return route
 }
+
+// RequiresSession reports whether a middleware chain verifies a bearer session
+// (an AuthMiddleware, as Session and Secure add). A host passes it to Goose's
+// openapi.Options.Secured so the routes open to anonymous callers are
+// documented as needing no token:
+//
+//	Secured: func(_, _ string, mws []types.Middleware) bool { return auth.RequiresSession(mws) }
+func RequiresSession(mws []types.Middleware) bool {
+	for _, m := range mws {
+		if _, ok := m.(*AuthMiddleware); ok {
+			return true
+		}
+	}
+	return false
+}
