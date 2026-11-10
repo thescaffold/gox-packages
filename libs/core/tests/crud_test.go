@@ -44,6 +44,8 @@ type mockEntity[T any] struct {
 	// on the SQL CrudResource actually emitted without a real database.
 	lastQuery string
 	lastArgs  []any
+	// lastChanges is the row Update was last given.
+	lastChanges *T
 }
 
 func (m *mockEntity[T]) Hydrate(name string, searchable, relations []string,
@@ -81,6 +83,7 @@ func (m *mockEntity[T]) Upsert(entities ...*T) error {
 }
 func (m *mockEntity[T]) Update(changes *T, query string, args ...any) (int64, error) {
 	m.updateCalled = true
+	m.lastChanges = changes
 	m.lastQuery, m.lastArgs = query, args
 	return 1, nil
 }

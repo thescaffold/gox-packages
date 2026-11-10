@@ -93,6 +93,9 @@ func (r *CrudResource[E, C, U]) Create(dto *CreateDto[C]) types.Output {
 
 	entity := new(E)
 	copyAny(entity, &payload)
+	if !r.stamp(entity, ctx) {
+		return response.Forbidden(r.title(ctx), r.tr("packages.core.crud.error.no-scope", ctx))
+	}
 	if err := r.entity.Insert(entity); err != nil {
 		return response.InternalServerError(r.cfg.Name, dbMsg(err))
 	}
@@ -235,6 +238,9 @@ func (r *CrudResource[E, C, U]) Update(dto *UpdateDto[U]) types.Output {
 
 	changes := new(E)
 	copyAny(changes, &payload)
+	if !r.stamp(changes, ctx) {
+		return response.Forbidden(r.title(ctx), r.tr("packages.core.crud.error.no-scope", ctx))
+	}
 	if _, err := r.entity.Update(changes, "id = ?", id); err != nil {
 		return response.InternalServerError(r.cfg.Name, dbMsg(err))
 	}
@@ -298,6 +304,9 @@ func (r *CrudResource[E, C, U]) CreateIgnoreDuplicate(dto *CreateDto[C]) types.O
 
 	entity := new(E)
 	copyAny(entity, &payload)
+	if !r.stamp(entity, ctx) {
+		return response.Forbidden(r.title(ctx), r.tr("packages.core.crud.error.no-scope", ctx))
+	}
 	if err := r.entity.Upsert(entity); err != nil {
 		return response.InternalServerError(r.cfg.Name, dbMsg(err))
 	}
@@ -333,6 +342,9 @@ func (r *CrudResource[E, C, U]) Upsert(dto *UpsertDto[C]) types.Output {
 
 	entity := new(E)
 	copyAny(entity, &payload)
+	if !r.stamp(entity, ctx) {
+		return response.Forbidden(r.title(ctx), r.tr("packages.core.crud.error.no-scope", ctx))
+	}
 	var opErr error
 	if dto.Update != "" {
 		opErr = r.entity.Upsert(entity)
@@ -403,6 +415,9 @@ func (r *CrudResource[E, C, U]) UpdatePut(dto *UpdatePutDto[C]) types.Output {
 
 	changes := new(E)
 	copyAny(changes, &payload)
+	if !r.stamp(changes, ctx) {
+		return response.Forbidden(r.title(ctx), r.tr("packages.core.crud.error.no-scope", ctx))
+	}
 	if _, err := r.entity.Update(changes, "id = ?", id); err != nil {
 		return response.InternalServerError(r.cfg.Name, dbMsg(err))
 	}
