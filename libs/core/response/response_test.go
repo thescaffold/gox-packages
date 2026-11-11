@@ -73,7 +73,8 @@ func TestSuccessIsUnchanged(t *testing.T) {
 
 // ErrorBody documents the error body; it must name exactly what Error writes.
 func TestErrorBodyMatchesTheWire(t *testing.T) {
-	wire := body(t, Invalid("social", "x", FieldError{Name: "n", Message: "m"}))
+	// every optional field set, so each one the wire can carry is compared
+	wire := body(t, ErrorDetails("social", "x", 400, "invalid", map[string]any{"k": "v"}, FieldError{Name: "n", Message: "m"}))
 	delete(wire, "data") // always null on errors; not documented
 	var got []string
 	for k := range wire {

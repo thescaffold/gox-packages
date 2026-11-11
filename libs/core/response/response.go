@@ -24,6 +24,9 @@ type Envelope struct {
 	Code      string            `json:"code,omitempty"`
 	Retryable *bool             `json:"retryable,omitempty"`
 	Fields    []FieldError      `json:"fields,omitempty"`
+	// Details is an error's machine-readable facts beside its code (limit_exceeded:
+	// {"remaining": "1200"}), so a client never parses them out of the message. Optional.
+	Details map[string]any `json:"details,omitempty"`
 }
 
 // FieldError is one invalid input field.
@@ -35,12 +38,13 @@ type FieldError struct {
 // ErrorBody documents what an error response carries (for OpenAPI); Error and
 // its conveniences write exactly these fields.
 type ErrorBody struct {
-	Status    string       `json:"status" binding:"required,oneof=error" doc:"always error"`
-	Title     string       `json:"title,omitempty" doc:"the app that answered"`
-	Message   string       `json:"message" binding:"required" doc:"for people; may change"`
-	Code      string       `json:"code" binding:"required" doc:"stable, for programs: bad_request, unauthorized, not_found, or an app's own code"`
-	Retryable bool         `json:"retryable" binding:"required" doc:"true when the same request may succeed later"`
-	Fields    []FieldError `json:"fields,omitempty" doc:"the invalid fields, when the input was invalid"`
+	Status    string         `json:"status" binding:"required,oneof=error" doc:"always error"`
+	Title     string         `json:"title,omitempty" doc:"the app that answered"`
+	Message   string         `json:"message" binding:"required" doc:"for people; may change"`
+	Code      string         `json:"code" binding:"required" doc:"stable, for programs: bad_request, unauthorized, not_found, or an app's own code"`
+	Retryable bool           `json:"retryable" binding:"required" doc:"true when the same request may succeed later"`
+	Fields    []FieldError   `json:"fields,omitempty" doc:"the invalid fields, when the input was invalid"`
+	Details   map[string]any `json:"details,omitempty" doc:"facts about the error for programs, by code (e.g. remaining on limit_exceeded); absent when there are none"`
 }
 
 // PaginationMeta matches the TS CRUD factory pagination shape exactly.
@@ -124,6 +128,14 @@ func Error(title, message string, code int) types.Output {
 func ErrorCode(title, message string, status int, code string, fields ...FieldError) types.Output {
 	retry := Retryable(status)
 	return newOutput(Envelope{Status: "error", Title: title, Message: message, Data: nil, Code: code, Retryable: &retry, Fields: fields}, status)
+}
+
+// ErrorDetails is ErrorCode with machine-readable details beside the code, such as what is left
+// of a limit: ErrorDetails("wallet", "That's over your daily limit", 422, "limit_exceeded",
+// map[string]any{"remaining": "1200", "currency": "USD"}). Money stays a string of minor units.
+func ErrorDetails(title, message string, status int, code string, details map[string]any, fields ...FieldError) types.Output {
+	retry := Retryable(status)
+	return newOutput(Envelope{Status: "error", Title: title, Message: message, Data: nil, Code: code, Retryable: &retry, Fields: fields, Details: details}, status)
 }
 
 // Invalid is a 400 naming the fields that are wrong.
