@@ -12,6 +12,8 @@ type Middleware struct{}
 
 func (m *Middleware) Handle(ctx types.Context) error {
 	ntx := Parse(ctx.Request().Headers())
+	// the address comes from the connection and trusted proxies only, never a client's header
+	ntx.IP = ClientIP(ctx)
 	if override := ctx.Request().Queries()["scope"]; override != "" {
 		ntx.Scope = override
 	}

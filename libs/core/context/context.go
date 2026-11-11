@@ -42,9 +42,16 @@ type NTXContext struct {
 
 // Parse reads x-ntx-* headers from a goose Headers map and returns a populated NTXContext.
 func Parse(headers map[string][]string) NTXContext {
+	// net/http stores canonical keys ("X-Ntx-Tracing-Id"), so look names up case-insensitively:
+	// an exact lookup of the lowercase names never matched a real request.
 	get := func(key string) string {
 		if vs, ok := headers[key]; ok && len(vs) > 0 {
 			return vs[0]
+		}
+		for k, vs := range headers {
+			if strings.EqualFold(k, key) && len(vs) > 0 {
+				return vs[0]
+			}
 		}
 		return ""
 	}

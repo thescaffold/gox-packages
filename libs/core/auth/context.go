@@ -36,7 +36,7 @@ var _ types.Middleware = (*FromClaims)(nil)
 
 func (m *FromClaims) Handle(ctx types.Context) error {
 	claims := GetClaims(ctx)
-	ntx := ntxctx.NTXContext{}
+	ntx := ntxctx.NTXContext{IP: ntxctx.ClientIP(ctx)}
 	if claims != nil {
 		if v, ok := claims["sub"].(string); ok {
 			ntx.UserID = v
