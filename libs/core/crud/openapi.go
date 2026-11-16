@@ -19,6 +19,12 @@ func (r *CrudResource[E, C, U]) OpenAPIFor(handler string) openapi.Operation {
 		return openapi.Operation{Response: *new(E)}
 	case "Update":
 		return openapi.Operation{Response: Updated{}}
+	case "ListCursor":
+		return openapi.Operation{Response: []E{}}
+	case "BulkCreate":
+		return openapi.Operation{Response: BulkCreated[E]{}}
+	case "BulkUpdate":
+		return openapi.Operation{Response: BulkUpdated{}}
 	}
 	return openapi.Operation{}
 }

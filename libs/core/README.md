@@ -12,8 +12,9 @@ Go library of cross-cutting concerns for Goose-based microservices.
 |---------|---------|
 | `auth` | JWT sign/verify, `AuthMiddleware` (Bearer), scope resolution |
 | `context` | Request context extraction (`NTXContext`), `Middleware` |
-| `crud` | Generic `CrudResource[E, C, U]` controller factory |
+| `crud` | Generic `CrudResource[E, C, U]` controller factory: bulk create/update, cursor pagination, tenant guard |
 | `events` | In-process wildcard pub/sub `Bus`, `TrackerService`, `Default()` (the process's bus), `RegisterSubscriptions` (make an app's `Subscriptions` live) |
+| `events/durable` | At-least-once subscriptions: bus events become goose queue jobs per subscription (retries, restart-safe, dead letters); feeds from the bus or the outbox |
 | `events/dbevents` | `Publish(bus)`: rows written through Goose `sql.Entity` become `apps.db.<table>.after-insert\|update\|delete` events (opt-in, async, in order, after commit) |
 | `filter` | Error/panic filter middleware |
 | `http` | Retry-capable `Client` with HMAC signing (`Internal`) and plain (`External`) calls |
@@ -107,4 +108,21 @@ when the token's `exp` passes, on an oversized frame (`MaxMessageBytes`,
 64 KiB), or after two missed pings. `ws.New(authorize)` keeps the original
 behaviour (any room, no client messages), but browser origins must now be
 same-origin.
+
+## CRUD: bulk, cursor, tenant guard
+
+`CrudResource` also has `BulkCreate` (`POST /bulk`, `{"items":[…]}`),
+`BulkUpdate` (`PATCH /bulk`, `{"items":[{"id":…,…}]}`) and `ListCursor`
+(`GET /cursor?limit=&cursor=&order=`, keyset on `created_at, id`, meta
+`{limit, order, has_more, next_cursor}`). Register them in the app's routes.
+Batches are all-or-nothing, capped by `Config.BulkLimit` (100), and run
+through the same hooks, validation, unique checks and workspace stamp as the
+single-row handlers. An id outside the caller's scope fails the whole batch.
+
+The tenant guard: a resource is scoped by `WorkspaceScoped`,
+`WorkspaceScopeClause`, `OwnerScoped`, or an entity that calls goose
+`RequireTenant` (the resource then binds it with `ForTenant(ctx.WorkspaceID)`
+on every query). `Config.Global` marks a shared resource. With
+`crud.RequireTenantScope(true)`, any other resource refuses every request;
+`crud.UnscopedResources()` lists them, so a host test can keep the list empty.
 
