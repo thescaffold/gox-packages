@@ -81,6 +81,10 @@ func (b *Bus) HasSubscriber(eventType string) bool {
 	return false
 }
 
+// MatchSegments reports whether a pattern, split on ".", matches an event
+// type, split on "." — the rule Subscribe uses ("*" one segment, "**" any).
+func MatchSegments(pattern, event []string) bool { return matchSegments(pattern, event) }
+
 // matchSegments returns true if the wildcard pattern matches the event segments.
 func matchSegments(pattern, event []string) bool {
 	return matchAt(pattern, 0, event, 0)
