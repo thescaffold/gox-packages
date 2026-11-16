@@ -23,7 +23,7 @@ Go library of cross-cutting concerns for Goose-based microservices.
 | `response` | Typed response helpers: `Success`, `NotFound`, `Unauthorized`, `Paginated`, etc. |
 | `security` | `Hash`/`Compare` (bcrypt), `GenerateHmac` (SHA-256) |
 | `utils` | UUID, time, money, random, type coercion, validation helpers |
-| `ws` | WebSocket service wrapper |
+| `ws` | WebSocket hub: namespaces and rooms, presence, a pub/sub `Adapter` for several nodes (`MemoryAdapter` in process), origin check, per-room (`AuthorizeJoin`) and per-message (`AuthorizeMessage`) authorization |
 
 ## Quick Start
 
@@ -76,3 +76,35 @@ svg := svc.New(image.Options{
 go test ./...
 go build ./...
 ```
+
+## WebSocket hub (`ws`)
+
+`ws.NewWithConfig` is the secure constructor; its defaults fail closed. It
+refuses a config with no authenticator, no room authorizer, a `"*"` origin,
+or client messages without a message authorizer.
+
+```go
+hub, err := ws.NewWithConfig(ws.Config{
+    AuthenticateRequest: sessionFromCookie,            // or Authorize: token from an "auth"/"join" frame
+    AuthorizeJoin: func(c *ws.Client, ns, room string) error {
+        return members.Check(c.Subject(), ns, room)    // the tenant/membership check
+    },
+    AuthorizeMessage: func(c *ws.Client, m ws.Message) error { return nil },
+    OnMessage:        chat.Ingest,                     // persist, sequence, then hub.Emit
+    Presence:         true,
+    Adapter:          ws.NewMemoryAdapter(),           // Redis/NATS later: same two methods
+})
+mux.Handle("/ws", http.HandlerFunc(hub.HandleHTTP))
+hub.Emit("chat", "ws1/c42", "message.created", msg)  // every node
+hub.Presence("chat", "ws1/c42")                       // who is here, every node
+```
+
+Client frames: `auth`, `join`, `leave`, `publish` (`event`, `payload`, `id`),
+`presence` (`payload` = state). Server frames: `authenticated`, `joined`,
+`left`, `event` (with `from` when relayed), `presence` (`sync`, `join`,
+`leave`, `update`), `ack`, `error` (with the `id` it answers). Sockets close
+when the token's `exp` passes, on an oversized frame (`MaxMessageBytes`,
+64 KiB), or after two missed pings. `ws.New(authorize)` keeps the original
+behaviour (any room, no client messages), but browser origins must now be
+same-origin.
+

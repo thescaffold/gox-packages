@@ -34,6 +34,10 @@ type CoreConfig struct {
 	// AuthorizeWS is the JWT validator for incoming WebSocket connections.
 	// Pass nil to allow all connections.
 	AuthorizeWS ws.AuthorizeFn
+	// WSHub, when set, is the hub the module declares instead of
+	// ws.New(AuthorizeWS): build it with ws.NewWithConfig for origin checks,
+	// per-room and per-message authorization, presence and an Adapter.
+	WSHub *ws.WsService
 	// ThrottleTTL/ThrottleLimit configure the global throttler service.
 	ThrottleTTL   time.Duration
 	ThrottleLimit int
@@ -106,7 +110,7 @@ func (m *CoreModule) Declarations() []any {
 		bus,
 		tracker,
 		httpClient,
-		ws.New(m.cfg.AuthorizeWS),
+		m.wsHub(),
 		&ntxctx.Middleware{},
 		filter.NewErrorMiddleware(tracker),
 		&image.Service{},
@@ -138,4 +142,12 @@ func (m *CoreModule) Boot(_ types.Kernel) error {
 		_ = m.media.Load(m.cfg.TranslationPaths)
 	}
 	return nil
+}
+
+// wsHub is the configured hub, or the original one built from AuthorizeWS.
+func (m *CoreModule) wsHub() *ws.WsService {
+	if m.cfg.WSHub != nil {
+		return m.cfg.WSHub
+	}
+	return ws.New(m.cfg.AuthorizeWS)
 }
