@@ -182,4 +182,12 @@ type Config[E, C, U any] struct {
 	// PATCH bodies are partial, so on Update a failed `required` is ignored
 	// (an omitted field is not an error) while every other rule still holds.
 	ValidateBody bool
+
+	// Global declares a resource whose rows every tenant shares (a currency
+	// list, plan catalogue). It exempts the resource from the tenant guard
+	// (RequireTenantScope) and from UnscopedResources; it scopes nothing.
+	Global bool
+
+	// BulkLimit caps the items of one BulkCreate or BulkUpdate (default 100).
+	BulkLimit int
 }

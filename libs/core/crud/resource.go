@@ -33,6 +33,7 @@ type CrudResource[E, C, U any] struct {
 func (r *CrudResource[E, C, U]) Hydrate(entity types.Entity[E], cfg Config[E, C, U]) {
 	r.entity = entity
 	r.cfg = cfg
+	r.register()
 }
 
 // SetLang wires the translation service used for response titles and messages.
@@ -70,6 +71,9 @@ func (r *CrudResource[E, C, U]) title(ctx ntxctx.NTXContext) string {
 // HTTP 200 (success()), a uniqueness clash returns a 400 error() envelope.
 func (r *CrudResource[E, C, U]) Create(dto *CreateDto[C]) types.Output {
 	ctx := dto.Ctx
+	if out := r.guard(ctx); out != nil {
+		return out
+	}
 	payload := dto.Body
 
 	if out := r.validateBody(&payload, false, ctx); out != nil {
@@ -96,7 +100,7 @@ func (r *CrudResource[E, C, U]) Create(dto *CreateDto[C]) types.Output {
 	if !r.stamp(entity, ctx) {
 		return response.Forbidden(r.title(ctx), r.tr("packages.core.crud.error.no-scope", ctx))
 	}
-	if err := r.entity.Insert(entity); err != nil {
+	if err := r.db(ctx).Insert(entity); err != nil {
 		return response.InternalServerError(r.cfg.Name, dbMsg(err))
 	}
 
@@ -117,6 +121,9 @@ func (r *CrudResource[E, C, U]) Create(dto *CreateDto[C]) types.Output {
 // List handles GET / — returns a paginated list.
 func (r *CrudResource[E, C, U]) List(dto *ListDto) types.Output {
 	ctx := dto.Ctx
+	if out := r.guard(ctx); out != nil {
+		return out
+	}
 	f := filter.MakeFilter(dto.Queries, r.cfg.Searchable)
 
 	_ = r.runHook(BeforeList, dto.Queries, ctx)
@@ -135,11 +142,11 @@ func (r *CrudResource[E, C, U]) List(dto *ListDto) types.Output {
 		return response.Paginated([]E{}, f.Page, f.PerPage, 0,
 			r.title(ctx), r.tr("packages.core.crud.get.all.success", ctx))
 	}
-	total, err := r.entity.Count(where, args...)
+	total, err := r.db(ctx).Count(where, args...)
 	if err != nil {
 		return response.InternalServerError(r.cfg.Name, dbMsg(err))
 	}
-	entities, err := r.entity.Find(f.Offset(), f.PerPage, where, args...)
+	entities, err := r.db(ctx).Find(f.Offset(), f.PerPage, where, args...)
 	if err != nil {
 		return response.InternalServerError(r.cfg.Name, dbMsg(err))
 	}
@@ -161,6 +168,9 @@ func (r *CrudResource[E, C, U]) List(dto *ListDto) types.Output {
 // a miss returns a 404 error() envelope.
 func (r *CrudResource[E, C, U]) Get(dto *GetDto) types.Output {
 	ctx := dto.Ctx
+	if out := r.guard(ctx); out != nil {
+		return out
+	}
 	id := dto.ID
 
 	_ = r.runHook(BeforeGet, id, ctx)
@@ -170,7 +180,7 @@ func (r *CrudResource[E, C, U]) Get(dto *GetDto) types.Output {
 		return response.NotFound(r.title(ctx),
 			r.tr("packages.core.crud.get.one.error.not-found", ctx))
 	}
-	entity, err := r.entity.First(where, args...)
+	entity, err := r.db(ctx).First(where, args...)
 	if err != nil || entity == nil {
 		return response.NotFound(r.title(ctx),
 			r.tr("packages.core.crud.get.one.error.not-found", ctx))
@@ -194,6 +204,9 @@ func (r *CrudResource[E, C, U]) Get(dto *GetDto) types.Output {
 // error(), so it defaults to BAD_REQUEST — not NOT_FOUND).
 func (r *CrudResource[E, C, U]) Update(dto *UpdateDto[U]) types.Output {
 	ctx := dto.Ctx
+	if out := r.guard(ctx); out != nil {
+		return out
+	}
 	id := dto.ID
 	payload := dto.Body
 
@@ -217,7 +230,7 @@ func (r *CrudResource[E, C, U]) Update(dto *UpdateDto[U]) types.Output {
 		return response.BadRequest(r.title(ctx),
 			r.tr("packages.core.crud.patch.update.error.not-found", ctx))
 	}
-	existing, err := r.entity.First(where, whereArgs...)
+	existing, err := r.db(ctx).First(where, whereArgs...)
 	if err != nil || existing == nil {
 		return response.BadRequest(r.title(ctx),
 			r.tr("packages.core.crud.patch.update.error.not-found", ctx))
@@ -241,7 +254,7 @@ func (r *CrudResource[E, C, U]) Update(dto *UpdateDto[U]) types.Output {
 	if !r.stamp(changes, ctx) {
 		return response.Forbidden(r.title(ctx), r.tr("packages.core.crud.error.no-scope", ctx))
 	}
-	if _, err := r.entity.Update(changes, "id = ?", id); err != nil {
+	if _, err := r.db(ctx).Update(changes, "id = ?", id); err != nil {
 		return response.InternalServerError(r.cfg.Name, dbMsg(err))
 	}
 
@@ -256,6 +269,9 @@ func (r *CrudResource[E, C, U]) Update(dto *UpdateDto[U]) types.Output {
 // a miss returns a 404 error() envelope.
 func (r *CrudResource[E, C, U]) Delete(dto *DeleteDto) types.Output {
 	ctx := dto.Ctx
+	if out := r.guard(ctx); out != nil {
+		return out
+	}
 	id := dto.ID
 
 	where, args, ok := r.scopeWhere("id = ?", []any{id}, ctx)
@@ -263,7 +279,7 @@ func (r *CrudResource[E, C, U]) Delete(dto *DeleteDto) types.Output {
 		return response.NotFound(r.title(ctx),
 			r.tr("packages.core.crud.delete.remove.error.not-found", ctx))
 	}
-	entity, err := r.entity.First(where, args...)
+	entity, err := r.db(ctx).First(where, args...)
 	if err != nil || entity == nil {
 		return response.NotFound(r.title(ctx),
 			r.tr("packages.core.crud.delete.remove.error.not-found", ctx))
@@ -276,7 +292,7 @@ func (r *CrudResource[E, C, U]) Delete(dto *DeleteDto) types.Output {
 		return response.BadRequest(r.title(ctx), err.Error())
 	}
 
-	if _, err := r.entity.Delete("id = ?", id); err != nil {
+	if _, err := r.db(ctx).Delete("id = ?", id); err != nil {
 		return response.InternalServerError(r.cfg.Name, dbMsg(err))
 	}
 
@@ -293,6 +309,9 @@ func (r *CrudResource[E, C, U]) Delete(dto *DeleteDto) types.Output {
 // Mirrors TS createIgnoreDuplicate(): returns HTTP 200 (success()).
 func (r *CrudResource[E, C, U]) CreateIgnoreDuplicate(dto *CreateDto[C]) types.Output {
 	ctx := dto.Ctx
+	if out := r.guard(ctx); out != nil {
+		return out
+	}
 	payload := dto.Body
 
 	_ = r.runHook(BeforeCreate, &payload, ctx)
@@ -307,7 +326,7 @@ func (r *CrudResource[E, C, U]) CreateIgnoreDuplicate(dto *CreateDto[C]) types.O
 	if !r.stamp(entity, ctx) {
 		return response.Forbidden(r.title(ctx), r.tr("packages.core.crud.error.no-scope", ctx))
 	}
-	if err := r.entity.Upsert(entity); err != nil {
+	if err := r.db(ctx).Upsert(entity); err != nil {
 		return response.InternalServerError(r.cfg.Name, dbMsg(err))
 	}
 
@@ -327,6 +346,9 @@ func (r *CrudResource[E, C, U]) CreateIgnoreDuplicate(dto *CreateDto[C]) types.O
 // Upsert handles POST /upsert — update-or-create when ?update=true, else find-or-create.
 func (r *CrudResource[E, C, U]) Upsert(dto *UpsertDto[C]) types.Output {
 	ctx := dto.Ctx
+	if out := r.guard(ctx); out != nil {
+		return out
+	}
 	payload := dto.Body
 
 	_ = r.runHook(BeforeCreate, &payload, ctx)
@@ -347,13 +369,13 @@ func (r *CrudResource[E, C, U]) Upsert(dto *UpsertDto[C]) types.Output {
 	}
 	var opErr error
 	if dto.Update != "" {
-		opErr = r.entity.Upsert(entity)
+		opErr = r.db(ctx).Upsert(entity)
 	} else {
-		opErr = r.entity.Insert(entity)
+		opErr = r.db(ctx).Insert(entity)
 	}
 	if opErr != nil {
 		// on duplicate during insert treat as upsert
-		_ = r.entity.Upsert(entity)
+		_ = r.db(ctx).Upsert(entity)
 	}
 
 	if m, err := r.runMorphAny(AfterCreate, entity, ctx); err != nil {
@@ -379,6 +401,9 @@ func (r *CrudResource[E, C, U]) Upsert(dto *UpsertDto[C]) types.Output {
 // conflict — we mirror that by passing an empty excludeID below.
 func (r *CrudResource[E, C, U]) UpdatePut(dto *UpdatePutDto[C]) types.Output {
 	ctx := dto.Ctx
+	if out := r.guard(ctx); out != nil {
+		return out
+	}
 	id := dto.ID
 	payload := dto.Body
 
@@ -402,7 +427,7 @@ func (r *CrudResource[E, C, U]) UpdatePut(dto *UpdatePutDto[C]) types.Output {
 		return response.BadRequest(r.title(ctx),
 			r.tr("packages.core.crud.put.update.error.not-found", ctx))
 	}
-	existing, err := r.entity.First(where, whereArgs...)
+	existing, err := r.db(ctx).First(where, whereArgs...)
 	if err != nil || existing == nil {
 		return response.BadRequest(r.title(ctx),
 			r.tr("packages.core.crud.put.update.error.not-found", ctx))
@@ -418,7 +443,7 @@ func (r *CrudResource[E, C, U]) UpdatePut(dto *UpdatePutDto[C]) types.Output {
 	if !r.stamp(changes, ctx) {
 		return response.Forbidden(r.title(ctx), r.tr("packages.core.crud.error.no-scope", ctx))
 	}
-	if _, err := r.entity.Update(changes, "id = ?", id); err != nil {
+	if _, err := r.db(ctx).Update(changes, "id = ?", id); err != nil {
 		return response.InternalServerError(r.cfg.Name, dbMsg(err))
 	}
 
@@ -431,6 +456,9 @@ func (r *CrudResource[E, C, U]) UpdatePut(dto *UpdatePutDto[C]) types.Output {
 // Mirrors TS metrics() which returns data { entities: <count> }.
 func (r *CrudResource[E, C, U]) Metrics(dto *ListDto) types.Output {
 	ctx := dto.Ctx
+	if out := r.guard(ctx); out != nil {
+		return out
+	}
 	f := filter.MakeFilter(dto.Queries, r.cfg.Searchable)
 	where, args := conditionsToSQL(f.Conditions, f.DateFrom, f.DateTo)
 	where, args, ok := r.scopeWhere(where, args, ctx)
@@ -438,7 +466,7 @@ func (r *CrudResource[E, C, U]) Metrics(dto *ListDto) types.Output {
 		return response.Success(map[string]any{"entities": int64(0)}, r.title(ctx),
 			r.tr("packages.core.crud.get.metrics.success", ctx), nil)
 	}
-	count, err := r.entity.Count(where, args...)
+	count, err := r.db(ctx).Count(where, args...)
 	if err != nil {
 		return response.InternalServerError(r.cfg.Name, dbMsg(err))
 	}
@@ -455,12 +483,15 @@ func (r *CrudResource[E, C, U]) Metrics(dto *ListDto) types.Output {
 // wiring still respond rather than 500.
 func (r *CrudResource[E, C, U]) FindRelatives(dto *GetDto) types.Output {
 	ctx := dto.Ctx
+	if out := r.guard(ctx); out != nil {
+		return out
+	}
 	where, args, ok := r.scopeWhere("id = ?", []any{dto.ID}, ctx)
 	if !ok {
 		return response.NotFound(r.title(ctx),
 			r.tr("packages.core.crud.get.relative.error.not-found", ctx))
 	}
-	entity, err := r.entity.First(where, args...)
+	entity, err := r.db(ctx).First(where, args...)
 	if err != nil || entity == nil {
 		return response.NotFound(r.title(ctx),
 			r.tr("packages.core.crud.get.relative.error.not-found", ctx))
@@ -486,6 +517,9 @@ func (r *CrudResource[E, C, U]) FindRelatives(dto *GetDto) types.Output {
 // Mirrors TS findOneByKeyValue(): a miss returns a 404 error() envelope.
 func (r *CrudResource[E, C, U]) FindByType(dto *FindByTypeDto) types.Output {
 	ctx := dto.Ctx
+	if out := r.guard(ctx); out != nil {
+		return out
+	}
 	f := filter.MakeFilter(dto.Queries, r.cfg.Searchable)
 	where, args := conditionsToSQL(f.Conditions, f.DateFrom, f.DateTo)
 	where, args, ok := r.scopeWhere(where, args, ctx)
@@ -497,9 +531,9 @@ func (r *CrudResource[E, C, U]) FindByType(dto *FindByTypeDto) types.Output {
 	var entity *E
 	var err error
 	if strings.ToLower(dto.Type) == "latest" {
-		entity, err = r.entity.Last(where, args...)
+		entity, err = r.db(ctx).Last(where, args...)
 	} else {
-		entity, err = r.entity.First(where, args...)
+		entity, err = r.db(ctx).First(where, args...)
 	}
 	if err != nil || entity == nil {
 		return response.NotFound(r.title(ctx),
@@ -513,6 +547,9 @@ func (r *CrudResource[E, C, U]) FindByType(dto *FindByTypeDto) types.Output {
 // an empty ids array returns a 400 error() envelope.
 func (r *CrudResource[E, C, U]) FindByIds(dto *FindByIdsDto) types.Output {
 	ctx := dto.Ctx
+	if out := r.guard(ctx); out != nil {
+		return out
+	}
 	if len(dto.IDs) == 0 {
 		return response.BadRequest(r.title(ctx),
 			r.tr("packages.core.crud.post.create.error.ids-required", ctx))
@@ -533,11 +570,11 @@ func (r *CrudResource[E, C, U]) FindByIds(dto *FindByIdsDto) types.Output {
 			r.title(ctx), r.tr("packages.core.crud.get.all.success", ctx))
 	}
 
-	total, err := r.entity.Count(where, args...)
+	total, err := r.db(ctx).Count(where, args...)
 	if err != nil {
 		return response.InternalServerError(r.cfg.Name, dbMsg(err))
 	}
-	entities, err := r.entity.Find(f.Offset(), f.PerPage, where, args...)
+	entities, err := r.db(ctx).Find(f.Offset(), f.PerPage, where, args...)
 	if err != nil {
 		return response.InternalServerError(r.cfg.Name, dbMsg(err))
 	}
@@ -666,7 +703,7 @@ func (r *CrudResource[E, C, U]) runUniqueChecks(constraints []map[string]any, ex
 			where += " AND id != ?"
 			args = append(args, excludeID)
 		}
-		exists, err := r.entity.Exists(where, args...)
+		exists, err := r.db(ctx).Exists(where, args...)
 		if err != nil {
 			return response.InternalServerError(r.cfg.Name, dbMsg(err))
 		}

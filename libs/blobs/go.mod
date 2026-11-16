@@ -3,7 +3,7 @@ module github.com/thescaffold/gox-packages/libs/blobs
 go 1.25.3
 
 require (
-	github.com/awesome-goose/goose v0.0.25
+	github.com/awesome-goose/goose v0.0.36
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/thescaffold/gox-packages/libs/core v0.0.14
 )

@@ -14,6 +14,7 @@ import (
 // of their own rows there with an update. ok=false means the caller has no scope to write in,
 // and the write must be refused, like scopeWhere's fail-closed reads.
 //
+// A tenant-owned entity (goose sql.Entity.RequireTenant) is stamped on its tenant column too.
 // Unscoped resources are untouched.
 func (r *CrudResource[E, C, U]) stamp(row *E, ctx ntxctx.NTXContext) bool {
 	if r.cfg.WorkspaceScoped && r.cfg.WorkspaceScopeClause == "" {
@@ -21,6 +22,17 @@ func (r *CrudResource[E, C, U]) stamp(row *E, ctx ntxctx.NTXContext) bool {
 			return false
 		}
 		setColumn(row, r.workspaceColumn(), ctx.WorkspaceID)
+	}
+	if te, ok := r.entity.(tenantEntity[E]); ok {
+		// A tenant-owned entity (goose RequireTenant) is stamped on its own
+		// column the same way, so a body naming another workspace is
+		// rewritten rather than refused by the entity with a 500.
+		if col, req := te.RequiresTenant(); req {
+			if ctx.WorkspaceID == "" {
+				return false
+			}
+			setColumn(row, col, ctx.WorkspaceID)
+		}
 	}
 	if r.cfg.OwnerScoped {
 		if ctx.UserID == "" {

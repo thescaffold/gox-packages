@@ -194,16 +194,20 @@ var errLockBusy = errors.New("lock busy: try again in a moment")
 // the goroutine.
 func (s *CacheService) StartCleanup(interval time.Duration) {
 	s.cleanupOnce.Do(func() {
-		s.cleanupStop = make(chan struct{})
+		stop := make(chan struct{})
+		s.cleanupStop = stop
 		if interval <= 0 {
 			interval = 60 * time.Second
 		}
+		// The goroutine keeps its own copy of the channel: StopCleanup clears
+		// the field, and reading it here raced with that and could leave the
+		// goroutine waiting on a nil channel forever.
 		go func() {
 			t := time.NewTicker(interval)
 			defer t.Stop()
 			for {
 				select {
-				case <-s.cleanupStop:
+				case <-stop:
 					return
 				case <-t.C:
 					s.l1.purgeExpired()

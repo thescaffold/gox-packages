@@ -89,6 +89,16 @@ type Publisher interface {
 	Publish(eventType string, payload any)
 }
 
+// CheckedPublisher is a Publisher that can refuse an event: when Relay.Bus
+// implements it, the relay calls PublishChecked instead of Publish, and an
+// error counts as a failed delivery (attempts, backoff, parking), the same as
+// a panicking subscriber. core/events/durable's Bridge implements it, so an
+// event the bridge could not enqueue is retried rather than lost.
+type CheckedPublisher interface {
+	Publisher
+	PublishChecked(eventType string, payload any) error
+}
+
 // Delivery is what a subscriber receives as payload: the event ID (for
 // de-duplication) and the decoded body.
 type Delivery struct {
@@ -96,6 +106,13 @@ type Delivery struct {
 	Payload map[string]any
 	Raw     json.RawMessage
 }
+
+// EventID is the outbox event's ID: consumers that do not import this
+// package read it through interface{ EventID() string }.
+func (d Delivery) EventID() string { return d.ID }
+
+// RawJSON is the event body as recorded (interface{ RawJSON() json.RawMessage }).
+func (d Delivery) RawJSON() json.RawMessage { return d.Raw }
 
 // Relay publishes pending events in order.
 type Relay struct {
@@ -194,7 +211,11 @@ func (r *Relay) publish(e Event) (err error) {
 	}()
 	var body map[string]any
 	_ = json.Unmarshal(e.Payload, &body)
-	r.Bus.Publish(e.Name, Delivery{ID: e.ID, Payload: body, Raw: e.Payload})
+	d := Delivery{ID: e.ID, Payload: body, Raw: e.Payload}
+	if cp, ok := r.Bus.(CheckedPublisher); ok {
+		return cp.PublishChecked(e.Name, d)
+	}
+	r.Bus.Publish(e.Name, d)
 	return nil
 }
 

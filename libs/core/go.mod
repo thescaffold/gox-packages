@@ -3,7 +3,7 @@ module github.com/thescaffold/gox-packages/libs/core
 go 1.25.3
 
 require (
-	github.com/awesome-goose/goose v0.0.34
+	github.com/awesome-goose/goose v0.0.36
 	github.com/cbroglie/mustache v1.4.0
 	github.com/go-playground/validator/v10 v10.26.0
 	github.com/golang-jwt/jwt/v5 v5.2.2
@@ -33,7 +33,7 @@ require (
 	golang.org/x/sys v0.43.0 // indirect
 	golang.org/x/text v0.36.0 // indirect
 	gorm.io/driver/mysql v1.5.7 // indirect
-	gorm.io/driver/postgres v1.5.11 // indirect
+	gorm.io/driver/postgres v1.5.11
 	gorm.io/driver/sqlite v1.5.7 // indirect
-	gorm.io/gorm v1.25.12 // indirect
+	gorm.io/gorm v1.25.12
 )
