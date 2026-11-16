@@ -2,6 +2,8 @@ github.com/awesome-goose/goose v0.0.34 h1:gA3XYothYX7JIHRlBS5Ic8H1/FoGhAhLeqI9LR
 github.com/awesome-goose/goose v0.0.34/go.mod h1:qQE/WGlNBQoKg3UVk4v8FpiHW2z3EZnBfJzTrRPQsHw=
 github.com/awesome-goose/goose v0.0.36 h1:rVDZijjfZ6ZZAKybml68H+jcmWKcoA6PTy2XUVzLLXM=
 github.com/awesome-goose/goose v0.0.36/go.mod h1:qQE/WGlNBQoKg3UVk4v8FpiHW2z3EZnBfJzTrRPQsHw=
+github.com/awesome-goose/goose v0.0.37 h1:4FmUzzeWJ1dmraKv2cJ96xvJe1gILs2PeVnB/ke5eUw=
+github.com/awesome-goose/goose v0.0.37/go.mod h1:qQE/WGlNBQoKg3UVk4v8FpiHW2z3EZnBfJzTrRPQsHw=
 github.com/cbroglie/mustache v1.4.0 h1:Azg0dVhxTml5me+7PsZ7WPrQq1Gkf3WApcHMjMprYoU=
 github.com/cbroglie/mustache v1.4.0/go.mod h1:SS1FTIghy0sjse4DUVGV1k/40B1qE1XkD9DtDsHo9iM=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=

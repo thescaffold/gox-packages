@@ -3,7 +3,7 @@ module github.com/thescaffold/gox-packages/libs/core
 go 1.25.3
 
 require (
-	github.com/awesome-goose/goose v0.0.36
+	github.com/awesome-goose/goose v0.0.37
 	github.com/cbroglie/mustache v1.4.0
 	github.com/go-playground/validator/v10 v10.26.0
 	github.com/golang-jwt/jwt/v5 v5.2.2
