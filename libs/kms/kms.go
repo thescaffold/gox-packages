@@ -3,8 +3,8 @@
 // Only wrapped DEKs are stored; losing the database alone never exposes a key.
 //
 // Drivers: Local (keys from configuration, for development and single-cell
-// installs). Cloud KMS and OpenBao transit drivers implement the same
-// interface.
+// installs) and Transit (OpenBao or Vault's transit engine). Cloud KMS drivers
+// implement the same interface.
 package kms
 
 import (
@@ -22,6 +22,10 @@ var (
 	ErrUnknownKey = errors.New("kms: unknown key")
 	ErrDecrypt    = errors.New("kms: cannot decrypt (wrong key, wrong context, or modified data)")
 	ErrConfig     = errors.New("kms: invalid configuration")
+	// ErrUnavailable: the KMS was not reached, is sealed, or failed.
+	ErrUnavailable = errors.New("kms: unavailable")
+	// ErrDenied: the KMS refused the login or the request (a policy).
+	ErrDenied = errors.New("kms: permission denied")
 )
 
 // KMS wraps and unwraps data keys. aad binds a wrapped key to its context (a
