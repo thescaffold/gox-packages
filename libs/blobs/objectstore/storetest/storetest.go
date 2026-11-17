@@ -625,10 +625,6 @@ func large(t *testing.T, cfg Config) {
 	s := cfg.New(t)
 	ctx := context.Background()
 
-	var base runtime.MemStats
-	runtime.GC()
-	runtime.ReadMemStats(&base)
-
 	info, err := s.Put(ctx, "ws/a/large", &countingReader{total: total}, objectstore.PutOptions{})
 	if err != nil {
 		t.Fatal(err)
@@ -636,6 +632,12 @@ func large(t *testing.T, cfg Config) {
 	if info.Size != total {
 		t.Fatalf("size %d, want %d", info.Size, total)
 	}
+	// The baseline is taken after the write and a collection: what the write left for the
+	// collector (an in-process fake server's request bodies, the parts) is not the read's, and
+	// counting it failed the check now and then (more often under -race).
+	var base runtime.MemStats
+	runtime.GC()
+	runtime.ReadMemStats(&base)
 	rc, _, err := s.Get(ctx, "ws/a/large", nil)
 	if err != nil {
 		t.Fatal(err)
