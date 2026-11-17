@@ -5,7 +5,8 @@
 // multipart uploads with part checksums.
 //
 // It is not S3: it does not enforce the 5 MiB minimum part size, versioning,
-// ACLs or Object Lock.
+// ACLs or Object Lock. NoPartChecksums makes it a service that keeps no part
+// checksums (Ceph RGW before Squid, e.g. Linode Object Storage).
 package s3test
 
 import (
@@ -66,6 +67,10 @@ type Server struct {
 	nextID  int
 	// Now lets a test move the server's clock (presign expiry).
 	Now func() time.Time
+	// NoPartChecksums: UploadPart neither echoes x-amz-checksum-sha256 nor
+	// keeps it, and ListParts lists no ChecksumSHA256, as Ceph RGW before Squid
+	// (Linode Object Storage) does. The body's checksum is still verified.
+	NoPartChecksums bool
 }
 
 // New starts a server for one bucket.
@@ -110,6 +115,19 @@ func (b blob) open() *os.File {
 
 // Count is the number of stored objects.
 func (s *Server) Count() int { s.mu.Lock(); defer s.mu.Unlock(); return len(s.objects) }
+
+// Keys lists every stored object's key, in order (what a listing of the
+// whole bucket would show, the driver's own objects included).
+func (s *Server) Keys() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	keys := make([]string, 0, len(s.objects))
+	for k := range s.objects {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
 
 // OpenUploads is the number of multipart uploads neither completed nor aborted.
 func (s *Server) OpenUploads() int { s.mu.Lock(); defer s.mu.Unlock(); return len(s.uploads) }
@@ -288,7 +306,12 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 			fail(w, 400, "BadDigest", "the checksum does not match")
 			return
 		}
-		u.parts[n] = part{data: s.newBlob(bytes.NewReader(body)), sha: got}
+		if s.NoPartChecksums {
+			u.parts[n] = part{data: s.newBlob(bytes.NewReader(body))}
+		} else {
+			u.parts[n] = part{data: s.newBlob(bytes.NewReader(body)), sha: got}
+			w.Header().Set("x-amz-checksum-sha256", got) // as S3 echoes it
+		}
 		w.Header().Set("ETag", u.parts[n].data.etag)
 	case r.Method == http.MethodGet && upID != "":
 		u := s.uploads[upID]
@@ -319,7 +342,11 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		for _, n := range nums {
 			p := u.parts[n]
-			fmt.Fprintf(&b, "<Part><PartNumber>%d</PartNumber><ETag>%s</ETag><Size>%d</Size><ChecksumSHA256>%s</ChecksumSHA256></Part>", n, p.data.etag, p.data.size, p.sha)
+			sum := ""
+			if p.sha != "" {
+				sum = "<ChecksumSHA256>" + p.sha + "</ChecksumSHA256>"
+			}
+			fmt.Fprintf(&b, "<Part><PartNumber>%d</PartNumber><ETag>%s</ETag><Size>%d</Size>%s</Part>", n, p.data.etag, p.data.size, sum)
 		}
 		b.WriteString("</ListPartsResult>")
 		w.Header().Set("Content-Type", "application/xml")
