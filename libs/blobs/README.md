@@ -51,6 +51,7 @@ url, _ := store.Presign(ctx, info.Key, objectstore.PresignOptions{Filename: "rep
 | `objectstore` | the interface (`Put`, `Get` with byte ranges, `Head`, `Delete`, `List`, `Copy`, `Presign`, multipart), key validation, signed download tokens, `ForWorkspace` tenant confinement |
 | `objectstore/pg` | **Postgres driver — the default.** Chunked, AES-256-GCM-sealed `bytea` rows in their own schema; atomic visibility; keyset streaming reads; locked objects enforced by database triggers; quotas; bounded read concurrency; sweeper |
 | `objectstore/fs` | local-filesystem driver for tests and single-machine development |
+| `objectstore/s3` | S3-compatible driver (AWS S3, MinIO, Ceph, R2, Linode Object Storage…), its own SigV4 signing, native `PresignPut`; `s3test` is an in-memory S3 for tests |
 | `objectstore/httpdl` | `GET /api/blobs/dl/<token>`: the download route behind `Presign` (Range, ETag, safe headers, single-use tokens) |
 | `objectstore/backend` | `FromEnv` / `Open`: picks the driver from `BLOBS_*` variables |
 | `objectstore/storetest` | the driver-agnostic **contract suite**; every driver must pass it |
@@ -101,6 +102,26 @@ position is detected, as is any modified byte.
   uploads older than an hour, purges replaced/deleted objects after a 10-minute grace
   period (so in-flight readers finish), retires expired (`ExpiresAt`) unlocked objects and
   forgets spent single-use tokens.
+- **S3: the bucket's lifecycle rules.** On a service that keeps no part checksums (Ceph
+  RGW before Squid, such as Linode Object Storage; `ListParts` lists no
+  `ChecksumSHA256`), `UploadPart` also writes a small marker object per part under
+  `<prefix>/.os-multipart/`, so `CompleteMultipart` can check the parts the caller lists.
+  `List` hides them, and completing or aborting the upload deletes them; an upload that is
+  neither leaves its parts and markers behind. Give the bucket two rules, with the same
+  number of days, longer than any upload takes (a week here):
+
+  ```json
+  {"Rules": [
+    {"ID": "abandoned-uploads", "Status": "Enabled", "Filter": {"Prefix": ""},
+     "AbortIncompleteMultipartUpload": {"DaysAfterInitiation": 7}},
+    {"ID": "abandoned-part-markers", "Status": "Enabled", "Filter": {"Prefix": ".os-multipart/"},
+     "Expiration": {"Days": 7}}
+  ]}
+  ```
+
+  `aws s3api put-bucket-lifecycle-configuration --bucket <bucket> --lifecycle-configuration file://rules.json`
+  (with `--endpoint-url` for a service other than AWS). With `Prefix` set on the store, the
+  markers' prefix is `<prefix>/.os-multipart/`. A service that answers `UploadPart` with the part's `x-amz-checksum-sha256`, as AWS S3 does, gets no markers.
 - Run the tests: `BLOBS_TEST_DB_URL="host=… dbname=…" go test ./objectstore/...`
   (Postgres tests skip without it; `BLOBS_TEST_BIG=1` adds the 1 GiB round trip,
   `BLOBS_TEST_LOAD=1` the concurrent-download load test).
