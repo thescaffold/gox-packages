@@ -324,6 +324,9 @@ func TestTransitKubernetesAuth(t *testing.T) {
 	if err := bad.Login(ctx); !errors.Is(err, ErrDenied) {
 		t.Fatalf("wrong role: %v", err)
 	}
+	if err := transitFailure("read key", 403, []string{"1 error occurred:\n\t* permission denied\n\n"}); err.Error() != "kms: transit read key: 403: 1 error occurred: * permission denied" || !errors.Is(err, ErrDenied) {
+		t.Fatalf("one line: %q", err)
+	}
 	var te *TransitError
 	if _, _, err := bad.Wrap(ctx, dek, nil); !errors.As(err, &te) || te.Op != "login" {
 		t.Fatalf("wrap with a wrong role fails at login: %v", err)

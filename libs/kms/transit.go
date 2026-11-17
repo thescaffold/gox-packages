@@ -470,6 +470,10 @@ func (t *Transit) send(ctx context.Context, op, method, path, token string, body
 }
 
 func transitFailure(op string, status int, msgs []string) error {
+	// the server's messages may span lines ("1 error occurred:\n\t* permission denied"): one line each
+	for i, m := range msgs {
+		msgs[i] = strings.Join(strings.Fields(m), " ")
+	}
 	e := &TransitError{Op: op, Status: status, Messages: msgs, kind: ErrUnavailable}
 	joined := strings.ToLower(strings.Join(msgs, "; "))
 	switch {
