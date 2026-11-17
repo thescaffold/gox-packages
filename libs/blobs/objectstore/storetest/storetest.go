@@ -40,6 +40,10 @@ type Config struct {
 	MaxObjectSize int64
 	// LargeBytes is the size of the streaming test; 0 means 24 MiB.
 	LargeBytes int64
+	// MinPartSize is the smallest part but the last that the store's service accepts in a
+	// multipart upload (5 MiB on S3 and the services like it; their in-memory fakes take any);
+	// 0 means no minimum.
+	MinPartSize int64
 }
 
 func sum(b []byte) string { h := sha256.Sum256(b); return hex.EncodeToString(h[:]) }
@@ -438,7 +442,11 @@ func sizeLimit(t *testing.T, cfg Config) {
 func multipart(t *testing.T, cfg Config) {
 	s := cfg.New(t)
 	ctx := context.Background()
-	p1, p2, p3 := randBytes(t, 100_000), randBytes(t, 70_000), randBytes(t, 5_000)
+	n1, n2 := 100_000, 70_000
+	if m := int(cfg.MinPartSize); m > n1 {
+		n1, n2 = m+100_000, m+70_000
+	}
+	p1, p2, p3 := randBytes(t, n1), randBytes(t, n2), randBytes(t, 5_000)
 	id, err := s.BeginMultipart(ctx, "ws/a/mp", objectstore.PutOptions{MediaType: "video/mp4"})
 	if err != nil {
 		t.Fatal(err)

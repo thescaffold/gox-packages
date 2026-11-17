@@ -22,6 +22,12 @@
 //   - Presign returns the same Origine-signed /api/blobs/dl/ URL as every other
 //     driver (the host serves the bytes, so it can authorise, audit and
 //     single-use them); PresignPut is the native direct-to-bucket URL.
+//   - CompleteMultipart checks each listed part against the part's SHA-256
+//     (ChecksumSHA256 in ListParts). A service that keeps no part checksums
+//     (Ceph RGW before Squid, e.g. Linode Object Storage) answers none; for it
+//     UploadPart also writes a small marker object holding the part's SHA-256
+//     and ETag under .os-multipart/ (beside the keys, hidden from List), and
+//     the markers go when the upload completes or is aborted.
 //   - An object copied or completed through multipart is re-stamped with its
 //     whole-object SHA-256 by a server-side copy onto itself, so objects are
 //     limited to 5 GiB (the single-copy limit) by default.
@@ -490,7 +496,7 @@ func (s *Store) Put(ctx context.Context, key string, r io.Reader, opts objectsto
 			upload = id
 		}
 		if n > 0 {
-			pi, err := s.putPart(ctx, key, upload, len(parts)+1, chunk)
+			pi, err := s.putPart(ctx, key, upload, len(parts)+1, chunk, false)
 			if err != nil {
 				abort()
 				return objectstore.ObjectInfo{}, err
@@ -630,11 +636,17 @@ func (s *Store) List(ctx context.Context, prefix string, opts objectstore.ListOp
 		return objectstore.ListPage{}, fmt.Errorf("s3: bad listing: %w", err)
 	}
 	page := objectstore.ListPage{}
+	last := ""
 	for _, c := range lr.Contents {
-		page.Objects = append(page.Objects, objectstore.ObjectInfo{Key: strings.TrimPrefix(c.Key, s.prefix), Size: c.Size, CreatedAt: c.LastModified})
+		k := strings.TrimPrefix(c.Key, s.prefix)
+		last = k
+		if strings.HasPrefix(k, markerDir) {
+			continue // UploadPart's markers are the driver's, not objects
+		}
+		page.Objects = append(page.Objects, objectstore.ObjectInfo{Key: k, Size: c.Size, CreatedAt: c.LastModified})
 	}
-	if lr.IsTruncated && len(page.Objects) > 0 {
-		page.Next = page.Objects[len(page.Objects)-1].Key
+	if lr.IsTruncated && last != "" {
+		page.Next = last
 	}
 	return page, nil
 }
@@ -705,7 +717,7 @@ func b64sha(hexsum string) string {
 	return base64.StdEncoding.EncodeToString(raw)
 }
 
-func (s *Store) putPart(ctx context.Context, key, upload string, n int, data []byte) (objectstore.PartInfo, error) {
+func (s *Store) putPart(ctx context.Context, key, upload string, n int, data []byte, marker bool) (objectstore.PartInfo, error) {
 	h := sha256.Sum256(data)
 	sha := hex.EncodeToString(h[:])
 	hdr := http.Header{}
@@ -715,7 +727,52 @@ func (s *Store) putPart(ctx context.Context, key, upload string, n int, data []b
 		return objectstore.PartInfo{}, mapErr(err)
 	}
 	_ = resp.Body.Close()
+	// A service that keeps the part's checksum echoes it; one that doesn't gets a marker, so
+	// CompleteMultipart can still tie the caller's SHA-256 to the uploaded part.
+	if marker && resp.Header.Get("x-amz-checksum-sha256") == "" {
+		mh := http.Header{}
+		mh.Set(hSHA, sha)
+		mh.Set(hPartETag, resp.Header.Get("ETag"))
+		mresp, err := s.do(ctx, http.MethodPut, s.objectURL(markerKey(upload, n), nil), mh, []byte{}, emptySHA256)
+		if err != nil {
+			return objectstore.PartInfo{}, mapErr(err)
+		}
+		_ = mresp.Body.Close()
+	}
 	return objectstore.PartInfo{Number: n, Size: int64(len(data)), SHA256: sha}, nil
+}
+
+// markerDir holds UploadPart's markers (see the package comment). List hides it.
+const markerDir = ".os-multipart/"
+
+const hPartETag = "x-amz-meta-os-part-etag"
+
+// markerKey is part n's marker, under a hash of the upload id (it can be long).
+func markerKey(upload string, n int) string {
+	h := sha256.Sum256([]byte(upload))
+	return markerDir + hex.EncodeToString(h[:16]) + "/" + strconv.Itoa(n)
+}
+
+// partMarker reads part n's marker: its SHA-256 and the ETag the part was stored with.
+func (s *Store) partMarker(ctx context.Context, upload string, n int) (sha, etag string, err error) {
+	resp, err := s.do(ctx, http.MethodHead, s.objectURL(markerKey(upload, n), nil), nil, nil, "")
+	if err != nil {
+		return "", "", mapErr(err)
+	}
+	_ = resp.Body.Close()
+	return resp.Header.Get(hSHA), resp.Header.Get(hPartETag), nil
+}
+
+// dropMarkers deletes the markers of the parts an upload had.
+func (s *Store) dropMarkers(ctx context.Context, upload string, remote map[int]remotePart) {
+	for n, rp := range remote {
+		if rp.sha != "" {
+			continue
+		}
+		if resp, err := s.do(ctx, http.MethodDelete, s.objectURL(markerKey(upload, n), nil), nil, nil, ""); err == nil {
+			_ = resp.Body.Close()
+		}
+	}
 }
 
 type partListing struct {
@@ -836,7 +893,7 @@ func (s *Store) UploadPart(ctx context.Context, id objectstore.UploadID, number 
 	if int64(len(data)) > s.cfg.MaxObjectSize {
 		return objectstore.PartInfo{}, objectstore.ErrTooLarge
 	}
-	return s.putPart(ctx, key, upload, number, data)
+	return s.putPart(ctx, key, upload, number, data, true)
 }
 
 // CompleteMultipart assembles the listed parts, in number order, into the object.
@@ -860,7 +917,16 @@ func (s *Store) CompleteMultipart(ctx context.Context, id objectstore.UploadID, 
 	var total int64
 	for _, p := range parts {
 		rp, ok := remote[p.Number]
-		if !ok || rp.size != p.Size || rp.sha != b64sha(p.SHA256) {
+		match := ok && rp.size == p.Size && rp.sha == b64sha(p.SHA256)
+		if ok && rp.size == p.Size && rp.sha == "" {
+			// no part checksums on this service: the part's marker holds them
+			sha, etag, err := s.partMarker(ctx, upload, p.Number)
+			if err != nil && !errors.Is(err, objectstore.ErrNotFound) {
+				return objectstore.ObjectInfo{}, err
+			}
+			match = err == nil && sha == p.SHA256 && etag != "" && etag == rp.etag
+		}
+		if !match {
 			return objectstore.ObjectInfo{}, fmt.Errorf("%w: part %d was not uploaded as listed", objectstore.ErrInvalidPart, p.Number)
 		}
 		total += rp.size
@@ -874,6 +940,7 @@ func (s *Store) CompleteMultipart(ctx context.Context, id objectstore.UploadID, 
 	if err := s.complete(ctx, key, upload, parts, false); err != nil {
 		return objectstore.ObjectInfo{}, err
 	}
+	s.dropMarkers(ctx, upload, remote)
 	// The object's SHA-256 is of the whole content: read it back once.
 	rc, _, err := s.Get(ctx, key, nil)
 	if err != nil {
@@ -896,6 +963,9 @@ func (s *Store) AbortMultipart(ctx context.Context, id objectstore.UploadID) err
 	key, upload, err := decodeID(id)
 	if err != nil {
 		return nil
+	}
+	if remote, err := s.listParts(ctx, key, upload); err == nil {
+		s.dropMarkers(ctx, upload, remote)
 	}
 	return s.abort(ctx, key, upload)
 }
